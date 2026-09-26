@@ -1,7 +1,8 @@
 # Diário Escolar Municipal (DEM) — Modelagem Arquitetural de um PWA
 
 **Práticas Extensionistas IV** · Análise e Desenvolvimento de Sistemas · UNOESC
-**Acadêmico:** João Vitor Bernardon SchweikartW
+
+**Acadêmico:** João Vitor Bernardon Schweikart
 
 ## Problema
 
