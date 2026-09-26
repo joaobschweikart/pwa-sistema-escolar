@@ -1,0 +1,48 @@
+@startuml 01-pacotes-arquitetura-aplicacao
+' Figura 1 — Diagrama UML de pacotes (arquitetura da aplicação)
+' Diário Escolar Municipal (DEM) — Prática Extensionista IV — UNOESC
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng 01-pacotes-arquitetura-aplicacao.puml
+!pragma layout smetana
+
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 15
+skinparam packageStyle folder
+skinparam PackageBorderColor #455A64
+skinparam PackageFontStyle bold
+skinparam ArrowColor #37474F
+skinparam ArrowFontSize 13
+
+title Diagrama UML de pacotes — arquitetura da aplicação\n<size:14>Diário Escolar Municipal (DEM)</size>
+
+package "Cliente — navegador do professor" as cliente <<subsystem>> #EFF6FF {
+  package "<size:13>Telas Blade e componentes Alpine.js</size>" as pwa.ui <<layer>> #FFFFFF
+  package "<size:13>Service worker, cache e fila de lançamentos (IndexedDB)</size>" as pwa.offline <<layer>> #FFFFFF
+}
+
+package "Servidor — monolito Laravel «dem-app»" as servidor <<subsystem>> #FFFCF2 {
+  package "<size:13>Rotas, controllers, validação e autenticação</size>" as app.http <<layer>> #FFFFFF
+  package "<size:13>Casos de uso e processamento dos lotes de sincronização</size>" as app.application <<layer>> #FFFFFF
+  package "<size:13>Entidades e regras do diário, da frequência e das notas</size>" as app.domain <<layer>> #FFFFFF
+  package "<size:13>Repositórios Eloquent, fila e gateways externos</size>" as app.infrastructure <<layer>> #FFFFFF
+  package "<size:13>Esquema relacional «dem_db» (MySQL 8)</size>" as database <<layer>> #FFFFFF
+}
+
+package "<size:13>Amazon SES, Object Storage e CloudWatch Logs</size>" as servicos.externos <<external>> #F4F4F4
+
+pwa.ui ..> pwa.offline : <<use>>
+pwa.ui ..> app.http : <<use>>\n<size:12>HTTPS (com conexão)</size>
+pwa.offline ..> app.http : <<use>>\n<size:12>HTTPS/JSON (sincronização)</size>
+
+app.http ..> app.application : <<use>>
+app.application ..> app.domain : <<use>>
+app.infrastructure ..> app.domain : <<realize>>\n<size:12>implementa os contratos</size>
+app.infrastructure ..> database : <<access>>
+app.infrastructure ..> servicos.externos : <<use>>
+
+legend bottom
+  <b>Legenda</b> — símbolo de pasta = pacote (camada ou subsistema); seta tracejada = dependência, do pacote dependente para o pacote do qual depende.
+  «use» consome serviços   «access» acessa dados   «realize» implementa contratos declarados no domínio
+endlegend
+
+@enduml

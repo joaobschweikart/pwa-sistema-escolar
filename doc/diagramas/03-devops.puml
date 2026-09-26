@@ -1,0 +1,70 @@
+@startuml 03-devops
+' Figura 3 — Diagrama de arquitetura DevOps (fluxo CI/CD)
+' Diário Escolar Municipal (DEM) — Prática Extensionista IV — UNOESC
+' Notação: diagrama de atividades UML com partições (raias)
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng 03-devops.puml
+
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 14
+skinparam ActivityBorderColor #455A64
+skinparam ActivityBackgroundColor #FFFFFF
+skinparam ActivityDiamondBackgroundColor #FFF8E1
+skinparam ActivityDiamondBorderColor #8D6E63
+skinparam ArrowColor #37474F
+skinparam ArrowFontSize 13
+skinparam SwimlaneTitleFontSize 14
+skinparam SwimlaneBorderColor #90A4AE
+
+title Diagrama de arquitetura DevOps — do commit até a produção\n<size:14>Diário Escolar Municipal (DEM)</size>
+
+|#F3F7FB|Desenvolvimento|
+start
+:Criar branch //feature/*// e\nimplementar com testes;
+:Commit e push;
+
+|#EEF3F8|GitHub|
+:Abrir //pull request// para //develop//;
+
+|#EAF4EC|Integração contínua\n(GitHub Actions)|
+repeat :Executar o //workflow// de CI;
+  :Lint e análise estática\n(Pint e Larastan);
+  :Testes automatizados\n(Pest/PHPUnit);
+  :Build do front-end (Vite) e\nbuild da imagem Docker;
+backward :Corrigir e enviar novo commit;
+repeat while (CI aprovada?) is (não) not (sim)
+
+|#EEF3F8|GitHub|
+:Revisão de código, //merge//\ne tag //vX.Y.Z//;
+
+|#F6EEF8|Entrega contínua\n(Amazon ECR e AWS SSM)|
+:Publicar a imagem //dem-app// no Amazon ECR;
+:Implantar em homologação\nvia AWS Systems Manager;
+
+|#EEF3F8|GitHub|
+:Aprovação manual da\nSecretaria de Educação;
+
+|#F6EEF8|Entrega contínua\n(Amazon ECR e AWS SSM)|
+:Implantar na instância «dem-prod»\nvia AWS Systems Manager;
+
+|#EAF1F8|Produção e monitoramento\n(Lightsail e CloudWatch)|
+:""docker compose pull && up -d""\ne migrações do banco;
+if (//Healthcheck// respondeu?) then (não)
+  :Rollback para a versão anterior\n(imagem já publicada no ECR);<<#FFEBEE>>
+else (sim)
+  :Versão em produção;<<#E8F5E9>>
+endif
+:Monitorar logs e alarmes no CloudWatch\ne gravar o backup diário em «dem-backups»;
+:Abrir //issue// a partir de incidentes\nou do retorno das escolas;
+
+|#F3F7FB|Desenvolvimento|
+:Priorizar a //issue// no backlog\ne reiniciar o ciclo;
+stop
+
+legend bottom
+  <b>Legenda</b> — diagrama de atividades UML com partições: cada raia indica a ferramenta ou o ambiente responsável pela etapa.
+  Retângulo arredondado = ação   losango = decisão   seta = fluxo de controle   CI = integração contínua   CD = entrega contínua
+  A última raia fecha o ciclo DevOps: o monitoramento retroalimenta o desenvolvimento.
+endlegend
+
+@enduml

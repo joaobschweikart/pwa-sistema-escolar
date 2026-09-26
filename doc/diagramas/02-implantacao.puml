@@ -1,0 +1,73 @@
+@startuml 02-implantacao
+' Figura 2 — Diagrama UML de implantação (arquitetura física)
+' Diário Escolar Municipal (DEM) — Prática Extensionista IV — UNOESC
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng 02-implantacao.puml
+!pragma layout smetana
+
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 15
+skinparam NodeBorderColor #455A64
+skinparam NodeFontStyle bold
+skinparam NodeBackgroundColor #FFFFFF
+skinparam DatabaseBorderColor #1565C0
+skinparam DatabaseBackgroundColor #E3F2FD
+skinparam ArtifactBorderColor #6D4C41
+skinparam ArtifactBackgroundColor #FFF8E1
+skinparam CloudBorderColor #546E7A
+skinparam CloudBackgroundColor #FAFAFA
+skinparam ArrowColor #37474F
+skinparam ArrowFontSize 12
+
+title Diagrama UML de implantação — arquitetura física\n<size:14>Diário Escolar Municipal (DEM) — ambiente de produção na AWS (região sa-east-1)</size>
+
+node "Dispositivo do professor\n<size:13>notebook, tablet ou celular</size>" <<device>> as dispositivo {
+  node "Navegador com PWA instalada" <<execution environment>> as navegador {
+    artifact "app shell e service worker\n<size:13>pacotes pwa.ui e pwa.offline</size>" as a_pwa
+    database "IndexedDB\n<size:13>fila de lançamentos offline</size>" as idb
+  }
+}
+
+cloud "Internet\n<size:13>banda larga da escola ou 4G</size>" <<network>> as internet
+
+frame "Amazon Web Services — região sa-east-1 (São Paulo)" <<cloud>> as aws {
+
+  node "Instância Amazon Lightsail «dem-prod»\n<size:13>Linux, 2 vCPU e 2 GB de RAM, com agentes SSM e CloudWatch</size>" <<device>> as vps {
+    node "Docker Compose" <<execution environment>> as docker {
+      node "nginx\n<size:13>TLS e arquivos estáticos</size>" <<container>> as c_web
+      node "php-fpm — «dem-app»\n<size:13>aplicação Laravel e worker da fila</size>" <<container>> as c_app
+      node "mysql 8" <<container>> as c_db {
+        database "dem_db" as db
+      }
+    }
+  }
+
+  node "Amazon ECR\n<size:13>imagens da aplicação</size>" <<service>> as ecr
+  node "AWS Systems Manager\n<size:13>execução do deploy</size>" <<service>> as ssm
+  node "Amazon CloudWatch\n<size:13>logs e alarmes</size>" <<service>> as cw
+  node "Lightsail Object Storage\n<size:13>bucket «dem-backups»</size>" <<service>> as bucket
+  node "Amazon SES\n<size:13>e-mail transacional</size>" <<service>> as ses
+
+  ecr -[hidden]down- ssm
+  ssm -[hidden]down- cw
+  cw -[hidden]down- bucket
+  bucket -[hidden]down- ses
+}
+
+dispositivo -- internet : <<HTTPS>>\n<size:11>TLS, porta 443</size>
+internet -- c_web : <<HTTPS>>\n<size:11>porta 443</size>
+c_web -- c_app : <<FastCGI>>\n<size:11>porta 9000</size>
+c_app -- c_db : <<MySQL>>\n<size:11>3306, rede interna</size>
+c_app -- ses : <<SMTP+TLS>>\n<size:11>porta 587</size>
+c_app -- bucket : <<HTTPS>>\n<size:11>backup diário</size>
+vps -- cw : <<HTTPS>>\n<size:11>envio de logs</size>
+vps -- ssm : <<HTTPS>>\n<size:11>saída, sem SSH aberto</size>
+docker -- ecr : <<HTTPS>>\n<size:11>docker pull</size>
+
+legend bottom
+  <b>Legenda</b> — caixa tridimensional = nó de execução; cilindro = armazenamento; retângulo com aba = artefato implantado; linha contínua = caminho de comunicação, com protocolo e porta.
+  «device» equipamento   «execution environment» ambiente de execução   «container» container Docker   «service» serviço gerenciado da nuvem
+  O ambiente de homologação é uma réplica reduzida desta topologia e foi omitido para não duplicar elementos.
+endlegend
+
+@enduml
