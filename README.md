@@ -6,6 +6,11 @@
 PWA para escolas municipais do interior registrarem **aula, frequência e notas mesmo sem internet**.
 Os lançamentos ficam numa fila local e são sincronizados com o servidor quando a conexão volta.
 
+**Produção:** <https://diario.obramestra.com.br> · documentação da API em
+<https://diario.obramestra.com.br/docs/api> · healthcheck em
+<https://diario.obramestra.com.br/api/health>. Os dados são fictícios e as credenciais de demonstração
+estão [abaixo](#credenciais-de-demonstração).
+
 > A **Entrega 1** foi a modelagem arquitetural (`doc/Pratica Extensionista IV Modelagem Sistema PWA.pdf`).
 > A **Entrega 2** é a implementação: aplicação web responsiva, PWA offline, API REST e infraestrutura
 > em nuvem como código. A descrição da infraestrutura está em [`doc/infraestrutura.md`](doc/infraestrutura.md).
@@ -23,7 +28,7 @@ O DEM resolve isso com uma PWA que funciona offline e sincroniza em lotes idempo
 | **Responsividade** | Interface Blade + Tailwind *mobile-first*: tabelas viram cards no celular, alvos de toque ≥ 44 px, barra lateral no desktop e navegação inferior no celular ([prints](#prints)) |
 | **PWA (versão mobile)** | Manifest instalável, service worker Workbox, app shell offline, fila no IndexedDB com UUID e versão, sincronização em lote (evento `online` + Background Sync), indicador de pendências e limpeza de cache/IndexedDB no logout |
 | **API** | REST em `/api/v1` com Laravel Sanctum (tokens), API Resources, FormRequests, Policies, *rate limit*, OpenAPI (Scramble) e `GET /api/health` |
-| **Infraestrutura** | AWS Lightsail `sa-east-1` (Docker Compose: nginx, php-fpm, mysql), ECR, SSM, CloudWatch, SES e bucket `dem-backups`; CI/CD no GitHub Actions com OIDC, aprovação manual e rollback ([doc/infraestrutura.md](doc/infraestrutura.md)) |
+| **Infraestrutura** | AWS Lightsail (instância compartilhada em `us-east-1`; Docker Compose com nginx, php-fpm e mysql do DEM atrás do nginx de borda), ECR, SSM, CloudWatch, SES e bucket `dem-backups`; CI/CD no GitHub Actions com OIDC, aprovação manual e rollback. A opção dedicada em `sa-east-1` da modelagem segue implementada ([doc/infraestrutura.md](doc/infraestrutura.md)) |
 
 ## Funcionalidades
 
@@ -164,7 +169,8 @@ Cobertura relevante:
 ├── .github/workflows/       ci.yml e cd.yml
 ├── Dockerfile               imagem dem-app (multi-stage, linux/amd64)
 ├── docker-compose.yml       ambiente local (um comando)
-└── docker-compose.prod.yml  produção: nginx, php-fpm e mysql
+├── docker-compose.prod.yml  produção: nginx, php-fpm e mysql (instância compartilhada)
+└── docker-compose.prod.dedicado.yml  override para instância dedicada (80/443 + TLS próprio)
 ```
 
 ## Prints

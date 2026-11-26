@@ -19,7 +19,7 @@ skinparam CloudBackgroundColor #FAFAFA
 skinparam ArrowColor #37474F
 skinparam ArrowFontSize 12
 
-title Diagrama UML de implantação — arquitetura física\n<size:14>Diário Escolar Municipal (DEM) — ambiente de produção na AWS (região sa-east-1)</size>
+title Diagrama UML de implantação — arquitetura física\n<size:14>Diário Escolar Municipal (DEM) — produção na AWS (us-east-1), em instância Lightsail compartilhada</size>
 
 node "Dispositivo do professor\n<size:13>notebook, tablet ou celular</size>" <<device>> as dispositivo {
   node "Navegador com PWA instalada" <<execution environment>> as navegador {
@@ -30,13 +30,15 @@ node "Dispositivo do professor\n<size:13>notebook, tablet ou celular</size>" <<d
 
 cloud "Internet\n<size:13>banda larga da escola ou 4G</size>" <<network>> as internet
 
-frame "Amazon Web Services — região sa-east-1 (São Paulo)" <<cloud>> as aws {
+frame "Amazon Web Services — região us-east-1 (Virgínia do Norte)" <<cloud>> as aws {
 
-  node "Instância Amazon Lightsail «dem-prod»\n<size:13>Linux, 2 vCPU e 2 GB de RAM, com agentes SSM e CloudWatch</size>" <<device>> as vps {
+  node "Instância Amazon Lightsail «mestra-1» (compartilhada)\n<size:13>Ubuntu 22.04, 2 vCPU, 2 GB de RAM + 2 GB de swap, agentes SSM (nó híbrido) e CloudWatch</size>" <<device>> as vps {
     node "Docker Compose" <<execution environment>> as docker {
-      node "nginx\n<size:13>TLS e arquivos estáticos</size>" <<container>> as c_web
-      node "php-fpm — «dem-app»\n<size:13>aplicação Laravel, worker da fila e agendador (supervisord)</size>" <<container>> as c_app
-      node "mysql 8" <<container>> as c_db {
+      node "mestra_nginx — borda\n<size:13>TLS Let's Encrypt de todos os domínios (aplicação Mestra)</size>" <<container>> as c_borda #F4F4F4
+      node "containers da aplicação Mestra\n<size:13>fora do escopo do DEM</size>" <<container>> as c_mestra #F4F4F4
+      node "dem-nginx\n<size:13>arquivos estáticos e service worker</size>" <<container>> as c_web
+      node "dem-php-fpm — «dem-app»\n<size:13>aplicação Laravel, worker da fila e agendador (supervisord)</size>" <<container>> as c_app
+      node "dem-mysql — mysql 8.4" <<container>> as c_db {
         database "dem_db" as db
       }
     }
@@ -57,21 +59,23 @@ frame "Amazon Web Services — região sa-east-1 (São Paulo)" <<cloud>> as aws 
 }
 
 dispositivo -- internet : <<HTTPS>>\n<size:11>TLS, porta 443</size>
-internet -- c_web : <<HTTPS>>\n<size:11>porta 443</size>
+internet -- c_borda : <<HTTPS>>\n<size:11>porta 443</size>
+c_borda -- c_web : <<HTTP>>\n<size:11>rede Docker dem_borda</size>
+c_borda .. c_mestra
 c_web -- c_app : <<FastCGI>>\n<size:11>porta 9000</size>
 c_app -- c_db : <<MySQL>>\n<size:11>3306, rede interna</size>
 c_app -- ses : <<SMTP+TLS>>\n<size:11>porta 587</size>
 vps -- bucket : <<HTTPS>>\n<size:11>backup diário (cron do host)</size>
 vps -- cw : <<HTTPS>>\n<size:11>envio de logs</size>
-vps -- ssm : <<HTTPS>>\n<size:11>saída, sem SSH aberto</size>
+vps -- ssm : <<HTTPS>>\n<size:11>saída (deploy sem SSH)</size>
 vps -- params : <<HTTPS>>\n<size:11>.env gerado no deploy</size>
 docker -- ecr : <<HTTPS>>\n<size:11>docker pull</size>
 
 legend bottom
   <b>Legenda</b> — caixa tridimensional = nó de execução; cilindro = armazenamento; retângulo com aba = artefato implantado; linha contínua = caminho de comunicação, com protocolo e porta.
   «device» equipamento   «execution environment» ambiente de execução   «container» container Docker   «service» serviço gerenciado da nuvem
-  O ambiente de homologação é uma réplica reduzida desta topologia e foi omitido para não duplicar elementos (não provisionado na Entrega 2).
-  Firewall do Lightsail: somente 80/443; o MySQL fica em rede Docker interna, sem porta publicada; agente SSM registrado por ativação híbrida.
+  Instância compartilhada com a aplicação Mestra: a borda (mestra_nginx) termina o TLS de diario.obramestra.com.br e encaminha ao dem-nginx;
+  o DEM tem containers, rede interna, banco e volumes próprios; o MySQL do DEM não publica porta. Homologação: planejada, não provisionada.
 endlegend
 
 @enduml
