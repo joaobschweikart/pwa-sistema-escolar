@@ -1,0 +1,34 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Sid": "EcrLogin", "Effect": "Allow", "Action": "ecr:GetAuthorizationToken", "Resource": "*" },
+    {
+      "Sid": "EcrPushDemApp",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:CompleteLayerUpload", "ecr:DescribeImages",
+        "ecr:GetDownloadUrlForLayer", "ecr:InitiateLayerUpload", "ecr:PutImage", "ecr:UploadLayerPart"
+      ],
+      "Resource": "arn:aws:ecr:__AWS_REGION__:__AWS_ACCOUNT_ID__:repository/__DEM_ECR_REPO__"
+    },
+    {
+      "Sid": "DeployViaSsmSomenteNaInstanciaDoDem",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": "arn:aws:ssm:__AWS_REGION__:__AWS_ACCOUNT_ID__:managed-instance/*",
+      "Condition": { "StringEquals": { "ssm:resourceTag/Projeto": "dem" } }
+    },
+    {
+      "Sid": "DeployViaSsmDocumento",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": "arn:aws:ssm:__AWS_REGION__::document/AWS-RunShellScript"
+    },
+    {
+      "Sid": "AcompanharDeploy",
+      "Effect": "Allow",
+      "Action": ["ssm:GetCommandInvocation", "ssm:ListCommandInvocations", "ssm:DescribeInstanceInformation"],
+      "Resource": "*"
+    }
+  ]
+}
