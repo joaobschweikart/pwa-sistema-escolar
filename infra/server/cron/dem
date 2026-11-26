@@ -1,0 +1,7 @@
+# DEM — tarefas agendadas do host (instalado pelo deploy em /etc/cron.d/dem)
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Backup diário às 03:15 (horário de Brasília = 06:15 UTC) -> RPO 24 h
+15 6 * * * root /opt/dem/server/bin/backup.sh >> /var/log/dem-backup.log 2>&1
+# Teste mensal de restauração (dia 1, 07:00 UTC) num banco temporário
+0 7 1 * * root /opt/dem/server/bin/restore.sh --teste ultimo >> /var/log/dem-backup.log 2>&1

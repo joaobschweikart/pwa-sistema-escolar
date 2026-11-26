@@ -1,0 +1,105 @@
+# =============================================================================
+# DEM — PRODUÇÃO (instância Amazon Lightsail compartilhada com a aplicação Mestra)
+#
+# Três containers: nginx (arquivos estáticos + FastCGI), php-fpm «dem-app» (app +
+# fila + agendador via supervisord) e mysql (somente rede interna, sem porta).
+#
+# Modo COMPARTILHADO (padrão): as portas 80/443 da instância pertencem ao nginx
+# de borda da Mestra, que termina o TLS (Let's Encrypt) de diario.<domínio> e
+# encaminha para o container "dem-nginx" pela rede Docker externa "dem_borda".
+# Modo DEDICADO: some este arquivo com docker-compose.prod.dedicado.yml (o nginx
+# do DEM publica 80/443 e termina o TLS sozinho).
+#
+# Copiado da imagem dem-app para /opt/dem pelo deploy (infra/server/bin/deploy.sh).
+# Variáveis em /opt/dem/.env, gerado do AWS SSM Parameter Store (sem segredos no Git).
+# Memória: tetos de ~610 MB no total; uso real típico ~300 MB.
+# =============================================================================
+name: dem
+
+x-logs: &logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  nginx:
+    image: nginx:stable-alpine
+    container_name: dem-nginx
+    restart: unless-stopped
+    environment:
+      DEM_DOMAIN: ${DEM_DOMAIN:?defina DEM_DOMAIN}
+    volumes:
+      - dem-public:/var/www/html/public:ro
+      - ./nginx/templates:/opt/dem-nginx/templates:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
+      - ./nginx/10-dem-select-template.sh:/docker-entrypoint.d/10-dem-select-template.sh:ro
+    networks: [app, borda]
+    depends_on:
+      php-fpm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/api/health | grep -q '\"status\":\"ok\"'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 32m
+    logging: *logs
+
+  php-fpm:
+    image: ${DEM_IMAGE:?defina DEM_IMAGE}:${DEM_TAG:?defina DEM_TAG}
+    container_name: dem-php-fpm
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      APP_VERSION: ${DEM_TAG}
+      DB_HOST: mysql
+    volumes:
+      - dem-public:/var/www/public-shared
+      - dem-storage:/var/www/html/storage/app
+    # "app" permite saída para a internet (Amazon SES); "dados" alcança o MySQL
+    networks: [app, dados]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    mem_limit: 256m
+    logging: *logs
+
+  mysql:
+    image: mysql:8.4
+    container_name: dem-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-dem_db}
+      MYSQL_USER: ${DB_USERNAME:-dem}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?defina DB_ROOT_PASSWORD}
+    volumes:
+      - dem-mysql:/var/lib/mysql
+      - ./mysql/my.cnf:/etc/mysql/conf.d/dem.cnf:ro
+    # Sem "ports": o banco não é exposto; rede interna sem saída para a internet
+    networks: [dados]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u\"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    mem_limit: 320m
+    logging: *logs
+
+volumes:
+  dem-mysql:
+  dem-public:
+  dem-storage:
+
+networks:
+  app:
+  dados:
+    internal: true
+  # Rede compartilhada com o nginx de borda (criada pelo deploy; nunca removida
+  # por "compose down" porque é externa)
+  borda:
+    external: true
+    name: dem_borda

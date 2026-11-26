@@ -1,0 +1,7 @@
+# Configuração local da infraestrutura (contém conta/domínio/segredos — nunca versionar)
+infra/config.env
+infra/secrets.env
+infra/out/
+*.pem
+.DS_Store
+/doc/.entrega-2.html
