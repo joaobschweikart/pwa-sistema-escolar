@@ -11,7 +11,6 @@ use App\Http\Controllers\Web\Gestao\TurmaController;
 use App\Http\Controllers\Web\Gestao\UsuarioController;
 use App\Http\Controllers\Web\PainelController;
 use App\Http\Controllers\Web\ProfessorAppController;
-use App\Http\Controllers\Web\SenhaController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/painel');
@@ -19,10 +18,6 @@ Route::redirect('/', '/painel');
 Route::middleware('guest')->group(function () {
     Route::get('login', [AutenticacaoController::class, 'formulario'])->name('login');
     Route::post('login', [AutenticacaoController::class, 'entrar'])->middleware('throttle:login');
-    Route::get('esqueci-senha', [SenhaController::class, 'solicitar'])->name('password.request');
-    Route::post('esqueci-senha', [SenhaController::class, 'enviarLink'])->middleware('throttle:login')->name('password.email');
-    Route::get('redefinir-senha/{token}', [SenhaController::class, 'formulario'])->name('password.reset');
-    Route::post('redefinir-senha', [SenhaController::class, 'redefinir'])->name('password.update');
 });
 
 Route::post('logout', [AutenticacaoController::class, 'sair'])->name('logout');

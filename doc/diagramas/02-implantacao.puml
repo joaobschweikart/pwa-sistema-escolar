@@ -48,14 +48,12 @@ frame "Amazon Web Services — região us-east-1 (Virgínia do Norte)" <<cloud>>
   node "AWS Systems Manager\n<size:13>execução do deploy</size>" <<service>> as ssm
   node "Amazon CloudWatch\n<size:13>logs e alarmes</size>" <<service>> as cw
   node "Lightsail Object Storage\n<size:13>bucket «dem-backups»</size>" <<service>> as bucket
-  node "Amazon SES\n<size:13>e-mail transacional</size>" <<service>> as ses
   node "SSM Parameter Store\n<size:13>segredos da aplicação</size>" <<service>> as params
 
   ecr -[hidden]down- ssm
   ssm -[hidden]down- cw
   cw -[hidden]down- bucket
-  bucket -[hidden]down- ses
-  ses -[hidden]down- params
+  bucket -[hidden]down- params
 }
 
 dispositivo -- internet : <<HTTPS>>\n<size:11>TLS, porta 443</size>
@@ -64,7 +62,6 @@ c_borda -- c_web : <<HTTP>>\n<size:11>rede Docker dem_borda</size>
 c_borda .. c_mestra
 c_web -- c_app : <<FastCGI>>\n<size:11>porta 9000</size>
 c_app -- c_db : <<MySQL>>\n<size:11>3306, rede interna</size>
-c_app -- ses : <<SMTP+TLS>>\n<size:11>porta 587</size>
 vps -- bucket : <<HTTPS>>\n<size:11>backup diário (cron do host)</size>
 vps -- cw : <<HTTPS>>\n<size:11>envio de logs</size>
 vps -- ssm : <<HTTPS>>\n<size:11>saída (deploy sem SSH)</size>

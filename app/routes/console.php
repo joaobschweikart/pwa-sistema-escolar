@@ -23,4 +23,3 @@ Artisan::command('dem:limpar-sync', function () {
 
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
 Schedule::command('dem:limpar-sync')->weekly();
-Schedule::command('auth:clear-resets')->everyFifteenMinutes();

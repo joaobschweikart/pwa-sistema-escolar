@@ -35,10 +35,10 @@ usa GitHub Actions (`.github/workflows/`). Os nomes de recursos seguem a modelag
 | Deploy | GitHub Actions → OIDC → ECR → aprovação manual → AWS Systems Manager (Run Command, nó híbrido) |
 | Segredos | AWS Systems Manager Parameter Store (`SecureString`, `/dem/prod/*`) |
 | Backup | `mysqldump` diário → Lightsail Object Storage `dem-backups` (retenção de 30 dias) |
-| E-mail | Amazon SES via SMTP (porta 587, STARTTLS), identidade `diario.obramestra.com.br` |
-| Monitoramento | Amazon CloudWatch (logs dos containers do DEM e métricas do agente), alarmes e AWS Budgets |
+| E-mail | não utilizado: a senha esquecida é redefinida pelo gestor ou admin na tela de usuários, o que dispensa SES, DKIM e credencial SMTP |
+| Monitoramento | Amazon CloudWatch (logs dos containers do DEM e métricas do agente, dentro do nível gratuito) e healthcheck; alarmes e Budgets disponíveis nos scripts, mas não ativados (custo adicional zero) |
 | Memória do DEM | tetos de 32 + 256 + 320 MB; uso real medido de ~290 MB |
-| Custo adicional do DEM | cerca de **US$ 2 a 4 por mês** (a instância já era paga); instância dedicada: ~US$ 15 a 17 (seção 10) |
+| Custo adicional do DEM | cerca de **US$ 1 por mês** (bucket de backups) + centavos de ECR; instância dedicada: ~US$ 15 a 17 (seção 10) |
 | Objetivos de recuperação | **RTO de 4 h** e **RPO de 24 h** |
 
 Escopo desta entrega: provisionamos **somente produção**. A homologação está documentada como réplica
@@ -52,7 +52,7 @@ projeto acadêmico e uma segunda instância dobraria o custo sem ganho para a av
 
 | Aspecto | Instância dedicada (modelagem) | Instância compartilhada (implantada) |
 |---|---|---|
-| Custo mensal | ~US$ 15 a 17 | ~US$ 2 a 4 adicionais |
+| Custo mensal | ~US$ 15 a 17 | ~US$ 1 adicional |
 | Região | `sa-east-1` (dados no Brasil) | `us-east-1` (região da instância existente) |
 | Isolamento | nó exclusivo | containers, redes, banco, volumes e limites de memória próprios; mesmo kernel e host |
 | TLS e portas | nginx do DEM em 80/443 | nginx de borda da outra aplicação termina o TLS e encaminha ao DEM |
@@ -70,6 +70,15 @@ Como o risco foi mitigado:
   `docker-compose.prod.dedicado.yml`, sem mudar a aplicação. **Antes de inserir dados reais de alunos,
   recomenda-se migrar para a instância dedicada em `sa-east-1`** (LGPD, seção 6.2).
 
+### 1.2 Decisão: sem recuperação de senha por e-mail
+
+A modelagem previa redefinir a senha por link enviado pelo Amazon SES. Na implantação, essa função foi
+retirada: quem esquece a senha pede ao gestor da escola (ou ao admin da Secretaria), que define uma nova
+em *Gestão › Usuários*. Isso elimina a identidade SES, os registros DKIM no DNS, a saída do *sandbox* e a
+única credencial SMTP do projeto. O sistema deixa de enviar e-mail (driver `log`), o que reduz a
+superfície de ataque e o custo. Para uma rede municipal, em que todo usuário é cadastrado pela própria
+Secretaria, o fluxo administrativo é suficiente.
+
 ## 2. Modelo de serviço: IaaS, PaaS e SaaS
 
 A solução combina os três modelos de serviço, cada um onde ele faz mais sentido.
@@ -81,7 +90,6 @@ A solução combina os três modelos de serviço, cada um onde ele faz mais sent
 | Execução remota do deploy | AWS Systems Manager | PaaS | os scripts de deploy |
 | Segredos | SSM Parameter Store | PaaS | os valores dos parâmetros |
 | Armazenamento de backups | Lightsail Object Storage (S3) | PaaS | política de retenção |
-| E-mail transacional | Amazon SES | PaaS/SaaS | domínio e conteúdo dos e-mails |
 | Logs, métricas e alarmes | Amazon CloudWatch, Budgets | SaaS | limites e destinatários dos alertas |
 | Código e CI/CD | GitHub e GitHub Actions | SaaS | workflows e revisões |
 | Produto final | DEM para as escolas | **SaaS** do ponto de vista da Secretaria e das escolas | — |
@@ -116,7 +124,7 @@ Lightsail parte de US$ 15/mês, o que dobraria o custo sem ganho perceptível pa
 ## 3. Região: `us-east-1` (implantada) e `sa-east-1` (recomendada para dados reais)
 
 - **Implantada: `us-east-1` (Virgínia do Norte).** É a região onde já estava a instância compartilhada.
-  Todos os recursos de apoio (ECR, SSM, Parameter Store, SES, CloudWatch, bucket) foram criados na mesma
+  Todos os recursos de apoio (ECR, SSM, Parameter Store, CloudWatch, bucket) foram criados na mesma
   região, o que evita tráfego entre regiões.
 - **Latência:** a ida e volta Brasil–Virgínia acrescenta cerca de 120 a 150 ms por requisição. Para o
   DEM isso é pouco relevante, porque o professor trabalha offline e a sincronização é em lote.
@@ -171,17 +179,16 @@ A região é um parâmetro (`AWS_REGION` em `infra/config.env`), assim como a co
 
 | Recurso | Nome | Configuração |
 |---|---|---|
-| Amazon ECR | `dem-app` | tags **imutáveis**, *scan on push*, AES-256, ciclo de vida mantendo as 15 imagens mais recentes (o rollback é só uma troca de tag) |
+| Amazon ECR | `dem-app` | tags **imutáveis**, *scan on push*, AES-256, ciclo de vida mantendo as 5 imagens mais recentes (o rollback é só uma troca de tag) |
 | Lightsail Object Storage | `dem-backups` | plano de 5 GB, acesso **privado**, chave de acesso exclusiva do backup |
-| SSM Parameter Store | `/dem/prod/*` | 26 parâmetros `SecureString` (KMS), camada padrão gratuita |
+| SSM Parameter Store | `/dem/prod/*` | 19 parâmetros `SecureString` (KMS), camada padrão gratuita |
 | IAM: role `dem-github-deploy` | — | assumida pelo GitHub Actions via **OIDC** (somente tags `v*` e environment `production`). Pode publicar só no repositório `dem-app` e enviar comandos SSM só a nós com a tag `Projeto=dem` |
 | IAM: role `dem-ssm-hibrido` | — | função do nó híbrido: `AmazonSSMManagedInstanceCore`, `CloudWatchAgentServerPolicy`, leitura do ECR e leitura de `/dem/prod/*` |
 | SSM | nó híbrido `mi-…` | registrado por ativação de uso único (24 h); o Lightsail não é EC2 e não tem *instance profile* |
-| Amazon SES | `diario.obramestra.com.br` | identidade de domínio com DKIM; usuário SMTP `dem-ses-smtp` restrito a `ses:SendRawEmail` com remetente `*@diario.obramestra.com.br` |
 | Certificado TLS | Let's Encrypt | emitido pelo `mestra_certbot` (desafio HTTP-01 por webroot) e renovado pelo laço `certbot renew` já existente |
-| DNS | Registro.br | registro A `diario` → IP estático da instância; CNAMEs de DKIM do SES |
+| DNS | Registro.br | registro A `diario` → IP estático da instância |
 | CloudWatch | `/dem/prod/{containers,deploy,backup}` | retenção de 30/90/90 dias; métricas `DEM/Producao` (memória e disco) |
-| AWS Budgets | `dem-mensal` | limite de US$ 20/mês; alertas em 80% do gasto real e 100% do previsto |
+| AWS Budgets | `dem-mensal` | não criado nesta implantação, por decisão de não receber alertas (`01-orcamento.sh` cria limite de US$ 20/mês com alertas em 80% do real e 100% do previsto) |
 
 ### 4.4 Configuração da aplicação em produção
 
@@ -199,7 +206,7 @@ Dispositivo do professor ──HTTPS 443──▶ [Firewall Lightsail] ──▶
                                                                    │ HTTP 80 (rede Docker "dem_borda")
                                                               dem-nginx
                                                                    │ FastCGI 9000 (rede "app")
-                                         dem-php-fpm ──SMTP 587 (STARTTLS)──▶ Amazon SES
+                                                             dem-php-fpm
                                                                    │ MySQL 3306 (rede "dados", interna)
                                                               dem-mysql  (sem porta publicada, sem saída à internet)
 
@@ -213,7 +220,6 @@ Host ──HTTPS 443 (somente saída)──▶ SSM · ECR · CloudWatch · Param
 | 80/TCP | borda → `dem-nginx` | somente na rede Docker `dem_borda` (sem porta no host) |
 | 9000/TCP | `dem-nginx` → `dem-php-fpm` | FastCGI, somente na rede Docker `app` |
 | 3306/TCP | `dem-php-fpm` → `dem-mysql` | somente na rede Docker `dados` (`internal: true`) |
-| 587/TCP | `dem-php-fpm` → SES | e-mail com STARTTLS |
 | 443/TCP (saída) | host → AWS | agente SSM, ECR (pull), CloudWatch, Parameter Store, S3 (backup) |
 | 22/TCP | — | aberta pela aplicação dona da instância. **O DEM não usa SSH**: o deploy e a operação vão pelo SSM |
 
@@ -231,9 +237,8 @@ no repositório da outra aplicação. No modo dedicado, o próprio `dem-nginx` t
 - **Identidades e acesso à AWS:** MFA na conta raiz, usuário IAM para o dia a dia e roles de privilégio
   mínimo. **O GitHub não guarda chaves da AWS**, porque autentica por OIDC com escopo restrito às tags
   `v*` e ao environment `production`.
-- **Chaves estáticas:** só existem duas, ambas inevitáveis e restritas. A credencial SMTP do SES (o
-  protocolo SMTP exige usuário e senha) só envia e-mail do próprio domínio. A chave do bucket só acessa
-  `dem-backups`. As duas ficam no Parameter Store.
+- **Chaves estáticas:** só existe uma, inevitável e restrita: a chave do bucket, que só acessa
+  `dem-backups` e fica no Parameter Store. Como o sistema não envia e-mail, não há credencial SMTP.
 - **Segredos:** guardados no Parameter Store como `SecureString`, criptografados com KMS. Os scripts nunca
   gravam segredos no Git: `infra/config.env` e `infra/out/` estão no `.gitignore`.
 - **Superfície de ataque:** o DEM não publica portas; o banco fica em rede sem saída. O DEM não usa SSH,
@@ -244,7 +249,7 @@ no repositório da outra aplicação. No modo dedicado, o próprio `dem-nginx` t
 - **Aplicação:**
   - autorização por papel (Admin da Secretaria, Gestor Escolar e Professor) e por vínculo
     professor↔turma/disciplina, com Policies e regras de domínio cobertas por testes;
-  - senhas com bcrypt e redefinição por token que expira em 60 minutos;
+  - senhas com bcrypt; a senha esquecida é redefinida pelo gestor ou admin (não há link de redefinição por e-mail);
   - *rate limit* de 120 req/min na API, 30 lotes de sync/min e 5 tentativas de login/min;
   - CSRF nas telas web, cookies de sessão `Secure`/`HttpOnly` e tokens Sanctum com validade de 30 dias,
     revogados no logout;
@@ -330,7 +335,7 @@ Disparada por tag `vX.Y.Z`:
 |---|---|---|---|---|
 | Banco `dem_db` | `infra/server/bin/backup.sh`: `mysqldump --single-transaction` → gzip → SHA-256 | diário, 03:15 (cron em `/etc/cron.d/dem`) | 30 dias no bucket, 7 dias no disco | bucket `dem-backups` |
 | Instância inteira | snapshot automático do Lightsail | opcional (na instância compartilhada depende do dono; no modo dedicado, ativado) | 7 snapshots | Lightsail |
-| Aplicação | imagens imutáveis no ECR | a cada tag | 15 versões | ECR |
+| Aplicação | imagens imutáveis no ECR | a cada tag | 5 versões | ECR |
 | Configuração | Parameter Store + código no Git | a cada alteração | histórico de versões | AWS / GitHub |
 | Lançamentos offline | fila no IndexedDB do professor | até sincronizar | até o envio | dispositivo |
 
@@ -342,7 +347,7 @@ Disparada por tag `vX.Y.Z`:
     tabelas principais com produção e apaga o banco temporário;
   - roda **todo mês** pelo cron;
   - foi validado nesta entrega: contagens restauradas iguais às de produção em cerca de 2 s;
-  - um alarme avisa se o backup diário não for concluído.
+  - o resultado fica no log `/dem/prod/backup` (o alarme "backup ausente" é opcional).
 
 **Procedimento de recuperação (meta: 4 h)**
 
@@ -368,8 +373,11 @@ Durante toda a recuperação **as aulas continuam sendo registradas offline**.
 | Custos | AWS Budgets `dem-mensal` | e-mail em 80% (real) e 100% (previsto) |
 | Erros funcionais | fila de conflitos e auditoria de notas no painel do gestor | indicador no painel |
 
-Os alarmes são criados por `02-provisionar.sh` quando `ALERTA_EMAIL` está definido, e cada inscrição
-precisa ser confirmada pelo e-mail recebido da AWS. Recomendação complementar sem custo: um monitor externo
+**Nesta implantação, os alarmes e o orçamento não foram ativados** (decisão de custo e de não receber
+alertas). A observabilidade fica com os logs e as métricas no CloudWatch, dentro do nível sempre gratuito,
+o healthcheck usado pelo deploy e o rollback automático. Para ativar os alertas, defina `ALERTA_EMAIL` e
+rode `02-provisionar.sh` e `01-orcamento.sh`; cada inscrição precisa ser confirmada pelo e-mail recebido
+da AWS. Recomendação complementar sem custo: um monitor externo
 de disponibilidade (por exemplo, UptimeRobot) apontado para `https://diario.obramestra.com.br/api/health`.
 Incidentes e retornos das escolas viram *issues* no GitHub, o que fecha o ciclo DevOps da modelagem.
 
@@ -379,14 +387,14 @@ Incidentes e retornos das escolas viram *issues* no GitHub, o que fecha o ciclo 
 |---|---|---|---|
 | Instância Lightsail 2 GB (IPv4) | 0,00 adicional | ~12,00 | na compartilhada, a instância já era paga pela outra aplicação |
 | IP estático | 0,00 | 0,00 | gratuito enquanto anexado |
-| Snapshots automáticos | 0,00 (não ativados para o DEM) | ~1,00 a 2,00 | US$ 0,05/GB-mês, incrementais |
-| Bucket `dem-backups` (5 GB) | 1,00 | 1,00 | dumps compactados ocupam poucos MB |
-| Amazon ECR | ~0,10 a 0,30 | ~0,10 a 0,30 | US$ 0,10/GB-mês; ciclo de vida limita a 15 imagens |
-| CloudWatch | ~0,60 a 1,00 | ~0,60 a 1,00 | 2 métricas personalizadas, alarmes e poucos GB de log |
-| SES | < 0,10 | < 0,10 | US$ 0,10 por mil e-mails (só recuperação de senha) |
+| Snapshots automáticos | 0,00 (não ativados) | ~1,00 a 2,00 | US$ 0,05/GB-mês, incrementais |
+| Bucket `dem-backups` (5 GB) | 1,00 | 1,00 | plano fixo do Lightsail; dumps compactados ocupam poucos MB |
+| Amazon ECR | ~0,05 a 0,20 | ~0,05 a 0,20 | US$ 0,10/GB-mês; ciclo de vida limita a 5 imagens |
+| CloudWatch | 0,00 | 0,00 a 1,00 | 2 métricas e poucos MB de log cabem no nível sempre gratuito (10 métricas, 5 GB de logs); alarmes só no modo com alertas |
 | SSM (Run Command, ativação padrão, Parameter Store padrão) | 0,00 | 0,00 | camada gratuita |
+| AWS Budgets | 0,00 (não criado) | 0,00 | os dois primeiros orçamentos são gratuitos |
 | Domínio | 0,00 (subdomínio de domínio existente) | ~0,70 | ex.: `.com.br` no Registro.br, cerca de R$ 40/ano |
-| **Total** | **~2 a 4** | **~15 a 17** | o orçamento `dem-mensal` alerta acima de US$ 20 |
+| **Total** | **~1,05 a 1,20** | **~15 a 17** | |
 
 **Plano gratuito:** contas AWS novas entram no *Free plan*, com créditos de boas-vindas válidos por até
 6 meses e utilizáveis em serviços elegíveis, como o Lightsail. Ao fim do período, ou quando os créditos
@@ -455,7 +463,6 @@ cd infra/aws
 ./01-orcamento.sh      # AWS Budgets
 ./02-provisionar.sh    # ECR, bucket, IAM/OIDC, ativação SSM (+ instância/IP/firewall no modo dedicado), alarmes
 ./03-dns.sh            # somente se o DNS estiver no Lightsail (aqui o DNS é do Registro.br)
-./04-ses.sh            # identidade do domínio no SES + credencial SMTP
 ./05-segredos.sh       # Parameter Store (/dem/prod/*)
 ./06-ssm.sh status     # confere o nó híbrido (ID mi-...)
 ```

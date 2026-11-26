@@ -28,7 +28,7 @@ O DEM resolve isso com uma PWA que funciona offline e sincroniza em lotes idempo
 | **Responsividade** | Interface Blade + Tailwind *mobile-first*: tabelas viram cards no celular, alvos de toque ≥ 44 px, barra lateral no desktop e navegação inferior no celular ([prints](#prints)) |
 | **PWA (versão mobile)** | Manifest instalável, service worker Workbox, app shell offline, fila no IndexedDB com UUID e versão, sincronização em lote (evento `online` + Background Sync), indicador de pendências e limpeza de cache/IndexedDB no logout |
 | **API** | REST em `/api/v1` com Laravel Sanctum (tokens), API Resources, FormRequests, Policies, *rate limit*, OpenAPI (Scramble) e `GET /api/health` |
-| **Infraestrutura** | AWS Lightsail (instância compartilhada em `us-east-1`; Docker Compose com nginx, php-fpm e mysql do DEM atrás do nginx de borda), ECR, SSM, CloudWatch, SES e bucket `dem-backups`; CI/CD no GitHub Actions com OIDC, aprovação manual e rollback. A opção dedicada em `sa-east-1` da modelagem segue implementada ([doc/infraestrutura.md](doc/infraestrutura.md)) |
+| **Infraestrutura** | AWS Lightsail (instância compartilhada em `us-east-1`; Docker Compose com nginx, php-fpm e mysql do DEM atrás do nginx de borda), ECR, SSM, CloudWatch e bucket `dem-backups`; CI/CD no GitHub Actions com OIDC, aprovação manual e rollback. A opção dedicada em `sa-east-1` da modelagem segue implementada ([doc/infraestrutura.md](doc/infraestrutura.md)) |
 
 ## Funcionalidades
 
@@ -47,7 +47,7 @@ O DEM resolve isso com uma PWA que funciona offline e sincroniza em lotes idempo
   - aula e frequência resolvem conflito por *last-write-wins*;
   - **conflito de nota não é aplicado** e vai para a tela de conflitos do gestor.
 - **Auditoria** imutável de toda alteração de nota (quem, quando, valor antigo e novo, origem).
-- **Recuperação de senha** por e-mail (driver `log` em dev; Amazon SES via SMTP 587 em produção).
+- **Senha esquecida:** não há recuperação por e-mail; o gestor da escola (ou o admin) redefine a senha em *Gestão › Usuários*. Assim o sistema não depende de serviço de e-mail.
 
 ## Stack
 
@@ -97,7 +97,6 @@ as migrações e carrega os dados de demonstração (cerca de 2 a 4 minutos).
 
 As portas são configuráveis por variável: `DEM_HTTP_PORT=8081 DEM_DB_PORT=3309 docker compose up -d`.
 Para recriar os dados de demonstração: `docker compose exec php-fpm php artisan migrate:fresh --seed`.
-E-mails de recuperação de senha ficam em `app/storage/logs/laravel.log` (driver `log`).
 
 ### Credenciais de demonstração
 

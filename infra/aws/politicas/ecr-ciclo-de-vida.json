@@ -2,8 +2,8 @@
   "rules": [
     {
       "rulePriority": 1,
-      "description": "Mantém as 15 imagens mais recentes (permite rollback por troca de tag)",
-      "selection": { "tagStatus": "any", "countType": "imageCountMoreThan", "countNumber": 15 },
+      "description": "Mantém as 5 imagens mais recentes (permite rollback por troca de tag)",
+      "selection": { "tagStatus": "any", "countType": "imageCountMoreThan", "countNumber": 5 },
       "action": { "type": "expire" }
     }
   ]

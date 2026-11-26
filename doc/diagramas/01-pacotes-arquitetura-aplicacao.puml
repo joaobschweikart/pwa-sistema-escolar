@@ -28,7 +28,7 @@ package "Servidor — monolito Laravel «dem-app»" as servidor <<subsystem>> #F
   package "<size:13>Esquema relacional «dem_db» (MySQL 8)</size>" as database <<layer>> #FFFFFF
 }
 
-package "<size:13>Amazon SES, Object Storage e CloudWatch Logs</size>" as servicos.externos <<external>> #F4F4F4
+package "<size:13>Object Storage e CloudWatch Logs</size>" as servicos.externos <<external>> #F4F4F4
 
 pwa.ui ..> pwa.offline : <<use>>
 pwa.ui ..> app.http : <<use>>\n<size:12>HTTPS (com conexão)</size>

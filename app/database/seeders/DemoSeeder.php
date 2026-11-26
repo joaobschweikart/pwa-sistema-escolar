@@ -20,7 +20,6 @@ use App\Infrastructure\Persistence\Models\Matricula;
 use App\Infrastructure\Persistence\Models\Municipio;
 use App\Infrastructure\Persistence\Models\Turma;
 use App\Infrastructure\Persistence\Models\User;
-use Faker\Factory as Faker;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
@@ -35,8 +34,19 @@ class DemoSeeder extends Seeder
 
     public function run(RegistrarAula $registrarAula, RegistrarFrequencia $registrarFrequencia, LancarNota $lancarNota): void
     {
-        $faker = Faker::create('pt_BR');
-        $faker->seed(2026);
+        // Gerador determinístico próprio (sem Faker, que é dependência de dev e
+        // não vai na imagem de produção): os mesmos dados em toda execução
+        $nomes = ['Alice', 'Arthur', 'Beatriz', 'Bernardo', 'Bruna', 'Caio', 'Camila', 'Davi', 'Eduarda', 'Enzo',
+            'Fernanda', 'Felipe', 'Gabriela', 'Gustavo', 'Heloísa', 'Heitor', 'Isabela', 'Igor', 'Júlia', 'João',
+            'Larissa', 'Lucas', 'Manuela', 'Mateus', 'Natália', 'Nicolas', 'Olívia', 'Otávio', 'Pietra', 'Pedro',
+            'Rafaela', 'Rodrigo', 'Sofia', 'Samuel', 'Talita', 'Thiago', 'Valentina', 'Vinícius', 'Yasmin', 'Yuri',
+            'Lívia', 'Leonardo', 'Mariana', 'Miguel', 'Lorena', 'Henrique', 'Cecília', 'Benício'];
+        $sobrenomes = ['Silva', 'Santos', 'Oliveira', 'Souza', 'Pereira', 'Lima', 'Carvalho', 'Ferreira', 'Rodrigues',
+            'Almeida', 'Costa', 'Gomes', 'Martins', 'Araújo', 'Ribeiro', 'Barbosa', 'Rocha', 'Dias', 'Moreira', 'Cardoso',
+            'Teixeira', 'Correia', 'Nunes', 'Mendes', 'Pinto', 'Vieira', 'Schmitt', 'Weber', 'Becker', 'Fontana'];
+        $adultos = ['Adriana', 'Cláudio', 'Daniela', 'Fábio', 'Luciana', 'Marcelo', 'Patrícia', 'Ricardo', 'Simone', 'Sérgio'];
+        $sequencialFuncional = 1000;
+        $sequencialAluno = 0;
         $ano = (int) now()->format('Y');
 
         $municipio = Municipio::query()->create(['nome' => 'Vale Verde', 'uf' => 'SC']);
@@ -57,7 +67,7 @@ class DemoSeeder extends Seeder
         $usuario = fn (string $nome, string $email, Papel $papel, ?Escola $escola) => User::query()->create([
             'name' => $nome, 'email' => $email, 'password' => self::SENHA, 'papel' => $papel,
             'escola_id' => $escola?->id, 'email_verified_at' => now(),
-            'matricula_funcional' => $papel === Papel::Admin ? null : 'MF-'.$faker->unique()->numerify('####'),
+            'matricula_funcional' => $papel === Papel::Admin ? null : 'MF-'.(++$sequencialFuncional),
         ]);
 
         $usuario('Ana Souza (Secretaria)', 'admin@dem.local', Papel::Admin, null);
@@ -78,13 +88,19 @@ class DemoSeeder extends Seeder
         $criadas = [];
         foreach ($turmas as [$escola, $nome, $serie, $turno]) {
             $turma = Turma::query()->create(['escola_id' => $escola->id, 'nome' => $nome, 'serie' => $serie, 'turno' => $turno, 'ano_letivo' => $ano]);
-            $nomes = collect(range(1, 12))->map(fn () => $faker->unique()->firstName().' '.$faker->lastName().' '.$faker->lastName())->sort()->values();
-            foreach ($nomes as $i => $nomeAluno) {
-                $aluno = Aluno::query()->create([
-                    'escola_id' => $escola->id, 'nome' => $nomeAluno, 'codigo' => $faker->unique()->numerify('A#######'),
-                    'data_nascimento' => $faker->dateTimeBetween('-12 years', '-9 years')->format('Y-m-d'),
-                    'responsavel' => $faker->name(),
-                ]);
+            $alunos = collect(range(1, 12))->map(function () use (&$sequencialAluno, $nomes, $sobrenomes, $adultos, $ano) {
+                $n = $sequencialAluno++;
+                $familia = $sobrenomes[($n * 7) % count($sobrenomes)];
+
+                return [
+                    'nome' => $nomes[$n].' '.$sobrenomes[($n * 11 + 3) % count($sobrenomes)].' '.$familia,
+                    'codigo' => 'A'.(4200000 + $n * 137),
+                    'data_nascimento' => Carbon::create($ano - 12, 3, 1)->addDays(($n * 53) % 1000)->format('Y-m-d'),
+                    'responsavel' => $adultos[$n % count($adultos)].' '.$familia,
+                ];
+            })->sortBy('nome')->values();
+            foreach ($alunos as $i => $dadosAluno) {
+                $aluno = Aluno::query()->create(['escola_id' => $escola->id, ...$dadosAluno]);
                 Matricula::query()->create([
                     'aluno_id' => $aluno->id, 'turma_id' => $turma->id, 'numero_chamada' => $i + 1,
                     'situacao' => 'ativa', 'data_matricula' => "{$ano}-02-10",

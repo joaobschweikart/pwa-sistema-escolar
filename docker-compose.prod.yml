@@ -58,7 +58,7 @@ services:
     volumes:
       - dem-public:/var/www/public-shared
       - dem-storage:/var/www/html/storage/app
-    # "app" permite saída para a internet (Amazon SES); "dados" alcança o MySQL
+    # "app" liga ao nginx do DEM; "dados" alcança o MySQL (rede interna)
     networks: [app, dados]
     depends_on:
       mysql:
