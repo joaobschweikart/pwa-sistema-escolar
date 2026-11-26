@@ -96,7 +96,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Sobe o ambiente local (um comando)
-        run: docker compose up -d --build --wait --wait-timeout 600
+        # containers rodam com o UID do runner (dono do checkout)
+        run: DEM_UID=$(id -u) DEM_GID=$(id -g) docker compose up -d --build --wait --wait-timeout 600
       - name: Healthcheck
         run: curl -fsS http://localhost:8080/api/health
       - name: Playwright (imagem oficial)
