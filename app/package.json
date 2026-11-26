@@ -9,7 +9,8 @@
         "e2e": "playwright test",
         "e2e:mobile": "playwright test --project=mobile-chrome",
         "e2e:docker": "docker run --rm --network host --ipc=host -u \"$(id -u):$(id -g)\" -e HOME=/tmp -e CI -v \"$PWD\":/app -w /app mcr.microsoft.com/playwright:v1.65.1-noble npx playwright test",
-        "pdf": "docker run --rm --ipc=host -u \"$(id -u):$(id -g)\" -e HOME=/tmp -v \"$PWD/..\":/repo -w /repo/app mcr.microsoft.com/playwright:v1.65.1-noble node scripts/gerar-pdf-entrega.mjs"
+        "pdf": "docker run --rm --ipc=host -u \"$(id -u):$(id -g)\" -e HOME=/tmp -v \"$PWD/..\":/repo -w /repo/app mcr.microsoft.com/playwright:v1.65.1-noble node scripts/gerar-pdf-entrega.mjs",
+        "prints": "docker run --rm --network host --ipc=host -u \"$(id -u):$(id -g)\" -e HOME=/tmp -e DEM_PRINTS=/repo/doc/prints -v \"$PWD/..\":/repo -w /repo/app mcr.microsoft.com/playwright:v1.65.1-noble node scripts/gerar-prints.mjs"
     },
     "devDependencies": {
         "@playwright/test": "^1.65.1",
