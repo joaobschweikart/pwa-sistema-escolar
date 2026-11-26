@@ -4,3 +4,4 @@ infra/secrets.env
 infra/out/
 *.pem
 .DS_Store
+/doc/.entrega-2.html

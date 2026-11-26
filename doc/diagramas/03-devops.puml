@@ -39,7 +39,7 @@ repeat while (CI aprovada?) is (não) not (sim)
 
 |#F6EEF8|Entrega contínua\n(Amazon ECR e AWS SSM)|
 :Publicar a imagem //dem-app// no Amazon ECR;
-:Implantar em homologação\nvia AWS Systems Manager;
+:Implantar em homologação\nvia AWS Systems Manager\n<size:12>(planejada: réplica reduzida, não provisionada na Entrega 2)</size>;<<#F5F5F5>>
 
 |#EEF3F8|GitHub|
 :Aprovação manual da\nSecretaria de Educação;
@@ -48,7 +48,7 @@ repeat while (CI aprovada?) is (não) not (sim)
 :Implantar na instância «dem-prod»\nvia AWS Systems Manager;
 
 |#EAF1F8|Produção e monitoramento\n(Lightsail e CloudWatch)|
-:""docker compose pull && up -d""\ne migrações do banco;
+:""docker compose pull && up -d""\ne migrações (""migrate --force"");
 if (//Healthcheck// respondeu?) then (não)
   :Rollback para a versão anterior\n(imagem já publicada no ECR);<<#FFEBEE>>
 else (sim)
@@ -65,6 +65,7 @@ legend bottom
   <b>Legenda</b> — diagrama de atividades UML com partições: cada raia indica a ferramenta ou o ambiente responsável pela etapa.
   Retângulo arredondado = ação   losango = decisão   seta = fluxo de controle   CI = integração contínua   CD = entrega contínua
   A última raia fecha o ciclo DevOps: o monitoramento retroalimenta o desenvolvimento.
+  Implementação (Entrega 2): GitHub Actions ci.yml (PR) e cd.yml (tag), OIDC na AWS sem chaves estáticas; a etapa de homologação está documentada, mas não provisionada.
 endlegend
 
 @enduml
