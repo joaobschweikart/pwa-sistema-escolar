@@ -2,7 +2,9 @@
 
 namespace Database\Factories;
 
-use App\Models\User;
+use App\Domain\Shared\Papel;
+use App\Infrastructure\Persistence\Models\Escola;
+use App\Infrastructure\Persistence\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -12,16 +14,10 @@ use Illuminate\Support\Str;
  */
 class UserFactory extends Factory
 {
-    /**
-     * The current password being used by the factory.
-     */
+    protected $model = User::class;
+
     protected static ?string $password;
 
-    /**
-     * Define the model's default state.
-     *
-     * @return array<string, mixed>
-     */
     public function definition(): array
     {
         return [
@@ -29,17 +25,24 @@ class UserFactory extends Factory
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
+            'papel' => Papel::Professor,
+            'ativo' => true,
             'remember_token' => Str::random(10),
         ];
     }
 
-    /**
-     * Indicate that the model's email address should be unverified.
-     */
-    public function unverified(): static
+    public function admin(): static
     {
-        return $this->state(fn (array $attributes) => [
-            'email_verified_at' => null,
-        ]);
+        return $this->state(fn () => ['papel' => Papel::Admin, 'escola_id' => null]);
+    }
+
+    public function gestor(?Escola $escola = null): static
+    {
+        return $this->state(fn () => ['papel' => Papel::Gestor, 'escola_id' => $escola->id ?? Escola::factory()]);
+    }
+
+    public function professor(?Escola $escola = null): static
+    {
+        return $this->state(fn () => ['papel' => Papel::Professor, 'escola_id' => $escola->id ?? Escola::factory()]);
     }
 }

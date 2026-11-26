@@ -17,6 +17,10 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+            $table->string('papel', 20)->index();
+            $table->foreignId('escola_id')->nullable()->constrained('escolas')->nullOnDelete();
+            $table->string('matricula_funcional', 30)->nullable();
+            $table->boolean('ativo')->default(true);
             $table->rememberToken();
             $table->timestamps();
         });
