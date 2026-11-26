@@ -75,7 +75,7 @@ jobs:
         run: |
           cat > comando.sh <<SCRIPT
           set -euo pipefail
-          export HOME=/root AWS_REGION=${AWS_REGION} ECR_REGISTRY=${ECR_REGISTRY} DEM_DOMAIN=${{ vars.DEM_DOMAIN }} SSM_PARAM_PATH=/dem/prod CERTBOT_EMAIL=${{ vars.CERTBOT_EMAIL }}
+          export HOME=/root AWS_REGION=${AWS_REGION} ECR_REGISTRY=${ECR_REGISTRY} DEM_DOMAIN=${{ vars.DEM_DOMAIN }} SSM_PARAM_PATH=/dem/prod DEM_MODO=${{ vars.DEM_MODO || 'compartilhado' }} CERTBOT_EMAIL=${{ vars.CERTBOT_EMAIL }}
           aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
           docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY}:${TAG}
           # arquivos de implantação versionados dentro da própria imagem

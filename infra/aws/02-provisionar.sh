@@ -15,15 +15,27 @@ source "$(dirname "$0")/lib.sh"
 conferir_conta
 
 TAGS_LS=("key=Projeto,value=dem" "key=Ambiente,value=producao")
+DEM_MODO=${DEM_MODO:-dedicado}
 
-# Plano Lightsail de 2 GB (Linux, com IPv4) consultado na própria API
-PLANO=$(aws lightsail get-bundles --no-include-inactive --query \
-  "bundles[?ramSizeInGb==\`2.0\` && isActive && contains(supportedPlatforms, 'LINUX_UNIX') && !contains(bundleId, 'ipv6')] | [0].[bundleId, price, cpuCount, diskSizeInGb, transferPerMonthInGb]" \
-  --output text)
-read -r PLANO_ID PLANO_PRECO PLANO_CPU PLANO_DISCO PLANO_TRANSF <<<"$PLANO"
-SO=$(aws lightsail get-blueprints --query "blueprints[?starts_with(blueprintId, 'ubuntu_24') && isActive] | [0].blueprintId" --output text)
+if [[ "$DEM_MODO" == "compartilhado" ]]; then
+  existe aws lightsail get-instance --instance-name "$DEM_INSTANCIA" || erro "instância ${DEM_INSTANCIA} não encontrada"
+  cat <<RESUMO
 
-cat <<RESUMO
+Modo COMPARTILHADO: o DEM usará a instância existente ${DEM_INSTANCIA} (não será
+criada instância, IP estático ou regra de firewall). Serão criados (${AWS_REGION}):
+  • Bucket ${DEM_BUCKET} (plano 5 GB, ~US\$ 1/mês) · ECR ${DEM_ECR_REPO}
+  • IAM: OIDC do GitHub (${GITHUB_REPO}) + roles dem-github-deploy e dem-ssm-hibrido
+  • Ativação híbrida do SSM (1 registro, 24 h) para registrar ${DEM_INSTANCIA}
+  • Alarmes (se ALERTA_EMAIL estiver definido)
+RESUMO
+else
+  # Plano Lightsail de 2 GB (Linux, com IPv4) consultado na própria API
+  PLANO=$(aws lightsail get-bundles --no-include-inactive --query \
+    "bundles[?ramSizeInGb==\`2.0\` && isActive && contains(supportedPlatforms, 'LINUX_UNIX') && !contains(bundleId, 'ipv6')] | [0].[bundleId, price, cpuCount, diskSizeInGb, transferPerMonthInGb]" \
+    --output text)
+  read -r PLANO_ID PLANO_PRECO PLANO_CPU PLANO_DISCO PLANO_TRANSF <<<"$PLANO"
+  SO=$(aws lightsail get-blueprints --query "blueprints[?starts_with(blueprintId, 'ubuntu_24') && isActive] | [0].blueprintId" --output text)
+  cat <<RESUMO
 
 Serão criados (região ${AWS_REGION}):
   • Lightsail ${DEM_INSTANCIA}: plano ${PLANO_ID} (${PLANO_CPU} vCPU, 2 GB, ${PLANO_DISCO} GB SSD, ${PLANO_TRANSF} GB/mês) — US\$ ${PLANO_PRECO}/mês · SO ${SO}
@@ -33,6 +45,7 @@ Serão criados (região ${AWS_REGION}):
   • IAM: OIDC do GitHub (${GITHUB_REPO}) + roles dem-github-deploy e dem-ssm-hibrido
   • Ativação híbrida do SSM (1 registro, válida por 24 h)
 RESUMO
+fi
 confirmar "Confirma a criação desses recursos na conta ${AWS_ACCOUNT_ID}?"
 
 # ---------------------------------------------------------------- 1. ECR
@@ -93,16 +106,30 @@ aws iam put-role-policy --role-name dem-ssm-hibrido --policy-name dem-parametros
 ok "role dem-ssm-hibrido pronta"
 
 # ---------------------------------------------------------------- 4. ativação híbrida do SSM
-if existe aws lightsail get-instance --instance-name "$DEM_INSTANCIA"; then
+criar_ativacao() {
+  sleep 10 # propagação da role no IAM
+  local expira
+  expira=$(date -u -d '+24 hours' +%Y-%m-%dT%H:%M:%SZ)
+  read -r ATIVACAO_ID ATIVACAO_CODIGO <<<"$(aws ssm create-activation --iam-role dem-ssm-hibrido \
+    --default-instance-name "$DEM_INSTANCIA" --registration-limit 1 --expiration-date "$expira" \
+    --description "Registro do Lightsail ${DEM_INSTANCIA} (DEM)" --tags Key=Projeto,Value=dem \
+    --query '[ActivationId, ActivationCode]' --output text)"
+  umask 077
+  printf 'SSM_ATIVACAO_ID=%s\nSSM_ATIVACAO_CODIGO=%s\n' "$ATIVACAO_ID" "$ATIVACAO_CODIGO" > "$SAIDA/ssm-ativacao.env"
+  ok "ativação híbrida criada (expira em ${expira}; dados em infra/out/ssm-ativacao.env)"
+}
+
+if [[ "$DEM_MODO" == "compartilhado" ]]; then
+  if [[ "$(aws ssm describe-instance-information --filters "Key=tag:Projeto,Values=dem" --query 'length(InstanceInformationList)' --output text)" == "0" ]]; then
+    criar_ativacao
+    info "Registre o agente na instância com infra/server/preparar-vm-compartilhada.sh"
+  else
+    ok "nó híbrido do DEM já registrado no SSM"
+  fi
+elif existe aws lightsail get-instance --instance-name "$DEM_INSTANCIA"; then
   ok "instância ${DEM_INSTANCIA} já existe (ativação não necessária)"
 else
-  sleep 10 # propagação da role no IAM
-  EXPIRA=$(date -u -d '+24 hours' +%Y-%m-%dT%H:%M:%SZ)
-  read -r ATIVACAO_ID ATIVACAO_CODIGO <<<"$(aws ssm create-activation --iam-role dem-ssm-hibrido \
-    --default-instance-name "$DEM_INSTANCIA" --registration-limit 1 --expiration-date "$EXPIRA" \
-    --description "Registro do Lightsail dem-prod" --tags Key=Projeto,Value=dem \
-    --query '[ActivationId, ActivationCode]' --output text)"
-  ok "ativação híbrida criada (expira em ${EXPIRA})"
+  criar_ativacao
 
   # ------------------------------------------------------------ 5. instância Lightsail
   SCRIPT=$(sed -e "s|__AWS_REGION__|${AWS_REGION}|g" -e "s|__SSM_ACTIVATION_ID__|${ATIVACAO_ID}|g" \
@@ -119,49 +146,58 @@ else
   done
 fi
 
-# IP estático
-if ! existe aws lightsail get-static-ip --static-ip-name "$DEM_IP_ESTATICO"; then
-  aws lightsail allocate-static-ip --static-ip-name "$DEM_IP_ESTATICO" >/dev/null
+if [[ "$DEM_MODO" == "compartilhado" ]]; then
+  IP=$(aws lightsail get-instance --instance-name "$DEM_INSTANCIA" --query instance.publicIpAddress --output text)
+  ok "instância compartilhada ${DEM_INSTANCIA} (${IP}); firewall e IP mantidos como estão"
+else
+  # IP estático
+  if ! existe aws lightsail get-static-ip --static-ip-name "$DEM_IP_ESTATICO"; then
+    aws lightsail allocate-static-ip --static-ip-name "$DEM_IP_ESTATICO" >/dev/null
+  fi
+  if [[ "$(aws lightsail get-static-ip --static-ip-name "$DEM_IP_ESTATICO" --query staticIp.isAttached --output text)" != "True" ]]; then
+    aws lightsail attach-static-ip --static-ip-name "$DEM_IP_ESTATICO" --instance-name "$DEM_INSTANCIA" >/dev/null
+  fi
+  IP=$(aws lightsail get-static-ip --static-ip-name "$DEM_IP_ESTATICO" --query staticIp.ipAddress --output text)
+  ok "IP estático ${IP} anexado"
+
+  # Firewall: somente HTTP e HTTPS (sem SSH: o acesso operacional é pelo SSM)
+  aws lightsail put-instance-public-ports --instance-name "$DEM_INSTANCIA" --port-infos \
+    "fromPort=80,toPort=80,protocol=tcp" "fromPort=443,toPort=443,protocol=tcp" >/dev/null
+  ok "firewall: portas 80 e 443"
 fi
-if [[ "$(aws lightsail get-static-ip --static-ip-name "$DEM_IP_ESTATICO" --query staticIp.isAttached --output text)" != "True" ]]; then
-  aws lightsail attach-static-ip --static-ip-name "$DEM_IP_ESTATICO" --instance-name "$DEM_INSTANCIA" >/dev/null
+
+if [[ -n "${ALERTA_EMAIL:-}" ]]; then
+  # Alarmes nativos do Lightsail (e-mail precisa ser confirmado uma vez)
+  aws lightsail create-contact-method --protocol Email --contact-endpoint "$ALERTA_EMAIL" >/dev/null 2>&1 || true
+  aws lightsail put-alarm --alarm-name dem-instancia-cpu --monitored-resource-name "$DEM_INSTANCIA" \
+    --metric-name CPUUtilization --comparison-operator GreaterThanOrEqualToThreshold --threshold 80 \
+    --evaluation-periods 3 --datapoints-to-alarm 3 --contact-protocols Email --notification-triggers ALARM >/dev/null
+  aws lightsail put-alarm --alarm-name dem-instancia-status --monitored-resource-name "$DEM_INSTANCIA" \
+    --metric-name StatusCheckFailed --comparison-operator GreaterThanOrEqualToThreshold --threshold 1 \
+    --evaluation-periods 2 --datapoints-to-alarm 2 --contact-protocols Email --notification-triggers ALARM >/dev/null
+  ok "alarmes Lightsail: CPU ≥ 80% e falha de status check"
+
+  # Alarmes do CloudWatch sobre as métricas do agente (disco e memória) via SNS
+  TOPICO=$(aws sns create-topic --name dem-alertas --tags Key=Projeto,Value=dem --query TopicArn --output text)
+  aws sns subscribe --topic-arn "$TOPICO" --protocol email --notification-endpoint "$ALERTA_EMAIL" >/dev/null
+  aws cloudwatch put-metric-alarm --alarm-name dem-prod-disco --namespace DEM/Producao --metric-name disk_used_percent \
+    --dimensions Name=InstanceId,Value=dem-prod Name=path,Value=/ Name=fstype,Value=ext4 \
+    --statistic Maximum --period 300 --evaluation-periods 2 --threshold 80 --comparison-operator GreaterThanOrEqualToThreshold \
+    --treat-missing-data breaching --alarm-actions "$TOPICO"
+  aws cloudwatch put-metric-alarm --alarm-name dem-prod-memoria --namespace DEM/Producao --metric-name mem_used_percent \
+    --dimensions Name=InstanceId,Value=dem-prod --statistic Average --period 300 --evaluation-periods 3 --threshold 90 \
+    --comparison-operator GreaterThanOrEqualToThreshold --alarm-actions "$TOPICO"
+  aws logs put-metric-filter --log-group-name /dem/prod/backup --filter-name dem-backup-concluido \
+    --filter-pattern '"backup concluído"' \
+    --metric-transformations metricName=BackupConcluido,metricNamespace=DEM/Producao,metricValue=1,defaultValue=0 2>/dev/null \
+    || aviso "grupo /dem/prod/backup ainda não existe: rode este script de novo após o primeiro deploy"
+  aws cloudwatch put-metric-alarm --alarm-name dem-prod-backup-ausente --namespace DEM/Producao --metric-name BackupConcluido \
+    --statistic Sum --period 86400 --evaluation-periods 1 --threshold 1 --comparison-operator LessThanThreshold \
+    --treat-missing-data breaching --alarm-actions "$TOPICO"
+  ok "alarmes CloudWatch: disco ≥ 80%, memória ≥ 90% e backup diário ausente (confirme a inscrição do e-mail no SNS)"
+else
+  aviso "ALERTA_EMAIL vazio: alarmes não criados (rode de novo após definir)"
 fi
-IP=$(aws lightsail get-static-ip --static-ip-name "$DEM_IP_ESTATICO" --query staticIp.ipAddress --output text)
-ok "IP estático ${IP} anexado"
-
-# Firewall: somente HTTP e HTTPS (sem SSH: o acesso operacional é pelo SSM)
-aws lightsail put-instance-public-ports --instance-name "$DEM_INSTANCIA" --port-infos \
-  "fromPort=80,toPort=80,protocol=tcp" "fromPort=443,toPort=443,protocol=tcp" >/dev/null
-ok "firewall: portas 80 e 443"
-
-# Alarmes nativos do Lightsail (e-mail precisa ser confirmado uma vez)
-aws lightsail create-contact-method --protocol Email --contact-endpoint "$ALERTA_EMAIL" >/dev/null 2>&1 || true
-aws lightsail put-alarm --alarm-name dem-prod-cpu --monitored-resource-name "$DEM_INSTANCIA" \
-  --metric-name CPUUtilization --comparison-operator GreaterThanOrEqualToThreshold --threshold 80 \
-  --evaluation-periods 3 --datapoints-to-alarm 3 --contact-protocols Email --notification-triggers ALARM >/dev/null
-aws lightsail put-alarm --alarm-name dem-prod-status --monitored-resource-name "$DEM_INSTANCIA" \
-  --metric-name StatusCheckFailed --comparison-operator GreaterThanOrEqualToThreshold --threshold 1 \
-  --evaluation-periods 2 --datapoints-to-alarm 2 --contact-protocols Email --notification-triggers ALARM >/dev/null
-ok "alarmes Lightsail: CPU ≥ 80% e falha de status check"
-
-# Alarmes do CloudWatch sobre as métricas do agente (disco e memória) via SNS
-TOPICO=$(aws sns create-topic --name dem-alertas --tags Key=Projeto,Value=dem --query TopicArn --output text)
-aws sns subscribe --topic-arn "$TOPICO" --protocol email --notification-endpoint "$ALERTA_EMAIL" >/dev/null
-aws cloudwatch put-metric-alarm --alarm-name dem-prod-disco --namespace DEM/Producao --metric-name disk_used_percent \
-  --dimensions Name=InstanceId,Value=dem-prod Name=path,Value=/ Name=fstype,Value=ext4 \
-  --statistic Maximum --period 300 --evaluation-periods 2 --threshold 80 --comparison-operator GreaterThanOrEqualToThreshold \
-  --treat-missing-data breaching --alarm-actions "$TOPICO"
-aws cloudwatch put-metric-alarm --alarm-name dem-prod-memoria --namespace DEM/Producao --metric-name mem_used_percent \
-  --dimensions Name=InstanceId,Value=dem-prod --statistic Average --period 300 --evaluation-periods 3 --threshold 90 \
-  --comparison-operator GreaterThanOrEqualToThreshold --alarm-actions "$TOPICO"
-aws logs put-metric-filter --log-group-name /dem/prod/backup --filter-name dem-backup-concluido \
-  --filter-pattern '"backup concluído"' \
-  --metric-transformations metricName=BackupConcluido,metricNamespace=DEM/Producao,metricValue=1,defaultValue=0 2>/dev/null \
-  || aviso "grupo /dem/prod/backup ainda não existe: rode este script de novo após o primeiro deploy"
-aws cloudwatch put-metric-alarm --alarm-name dem-prod-backup-ausente --namespace DEM/Producao --metric-name BackupConcluido \
-  --statistic Sum --period 86400 --evaluation-periods 1 --threshold 1 --comparison-operator LessThanThreshold \
-  --treat-missing-data breaching --alarm-actions "$TOPICO"
-ok "alarmes CloudWatch: disco ≥ 80%, memória ≥ 90% e backup diário ausente (confirme a inscrição do e-mail no SNS)"
 
 cat > "$SAIDA/resultado.env" <<RES
 DEM_IP=${IP}

@@ -85,7 +85,7 @@ COPY --from=vendor --chown=www-data:www-data /var/www/html /var/www/html
 COPY --from=assets --chown=www-data:www-data /app/public/build /var/www/html/public/build
 
 # Arquivos de implantação versionados junto com a imagem (extraídos pelo deploy no host)
-COPY docker-compose.prod.yml /opt/dem-deploy/docker-compose.prod.yml
+COPY docker-compose.prod.yml docker-compose.prod.dedicado.yml /opt/dem-deploy/
 COPY docker/nginx /opt/dem-deploy/nginx
 COPY docker/mysql /opt/dem-deploy/mysql
 COPY infra/server /opt/dem-deploy/server

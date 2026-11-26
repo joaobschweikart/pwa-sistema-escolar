@@ -4,12 +4,14 @@
 #   deploy.sh vX.Y.Z        implanta a tag (com healthcheck e rollback automático)
 #   deploy.sh --rollback    volta para a tag anterior
 # Variáveis esperadas (passadas pelo workflow cd.yml e gravadas em deploy.conf):
-#   AWS_REGION, ECR_REGISTRY, DEM_DOMAIN, SSM_PARAM_PATH, CERTBOT_EMAIL
+#   AWS_REGION, ECR_REGISTRY, DEM_DOMAIN, SSM_PARAM_PATH, DEM_MODO, CERTBOT_EMAIL
+# DEM_MODO=compartilhado (padrão): instância dividida com outra aplicação, cujo
+#   nginx de borda termina o TLS e encaminha para dem-nginx pela rede dem_borda.
+# DEM_MODO=dedicado: o nginx do DEM publica 80/443 (docker-compose.prod.dedicado.yml).
 # =============================================================================
 set -Eeuo pipefail
 
 DIR=/opt/dem
-COMPOSE=(docker compose --project-directory "$DIR" -f "$DIR/docker-compose.prod.yml")
 LOG=/var/log/dem-deploy.log
 exec > >(tee -a "$LOG") 2>&1
 export HOME=${HOME:-/root}
@@ -24,6 +26,8 @@ AWS_REGION=${AWS_REGION}
 ECR_REGISTRY=${ECR_REGISTRY}
 DEM_DOMAIN=${DEM_DOMAIN}
 SSM_PARAM_PATH=${SSM_PARAM_PATH:-/dem/prod}
+DEM_MODO=${DEM_MODO:-compartilhado}
+DEM_BORDA_CERTBOT=${DEM_BORDA_CERTBOT:-mestra_certbot}
 CERTBOT_EMAIL=${CERTBOT_EMAIL:-}
 CONF
 fi
@@ -31,6 +35,11 @@ fi
 source "$DIR/deploy.conf"
 export AWS_REGION AWS_DEFAULT_REGION="$AWS_REGION"
 IMAGEM="${ECR_REGISTRY}/dem-app"
+DEM_MODO=${DEM_MODO:-compartilhado}
+COMPOSE=(docker compose --project-directory "$DIR" -f "$DIR/docker-compose.prod.yml")
+if [[ "$DEM_MODO" == "dedicado" ]]; then
+  COMPOSE+=(-f "$DIR/docker-compose.prod.dedicado.yml")
+fi
 
 ATUAL=$(cat "$DIR/.dem-tag" 2>/dev/null || true)
 ANTERIOR=$(cat "$DIR/.dem-tag-anterior" 2>/dev/null || true)
@@ -72,7 +81,8 @@ gerar_env() {
 saudavel() {
   local tag="$1" resposta
   for _ in $(seq 1 30); do
-    resposta=$(curl -fsS --max-time 5 http://127.0.0.1/api/health 2>/dev/null || true)
+    # dentro do container: funciona nos dois modos (com ou sem portas publicadas)
+    resposta=$(docker exec dem-nginx wget -qO- -T 5 http://127.0.0.1/api/health 2>/dev/null </dev/null || true)
     if grep -q '"status":"ok"' <<<"$resposta" && grep -q "\"versao\":\"${tag}\"" <<<"$resposta"; then
       log "healthcheck OK ($resposta)"
       return 0
@@ -85,6 +95,7 @@ saudavel() {
 
 subir() {
   local tag="$1"
+  docker network inspect dem_borda >/dev/null 2>&1 || docker network create dem_borda >/dev/null
   gerar_env "$tag"
   "${COMPOSE[@]}" pull --quiet
   "${COMPOSE[@]}" up -d --remove-orphans --wait --wait-timeout 180
@@ -117,9 +128,21 @@ if [[ -x /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl ]]; th
   /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m onPremise -s \
     -c "file:$DIR/cloudwatch-agent.json" >/dev/null || log "aviso: agente CloudWatch não reconfigurado"
 fi
-if [[ ! -f "/etc/letsencrypt/live/${DEM_DOMAIN}/fullchain.pem" && -n "${CERTBOT_EMAIL:-}" ]]; then
-  "$DIR/server/bin/certbot-init.sh" || log "aviso: certificado TLS ainda não emitido (verifique o DNS)"
+if [[ "$DEM_MODO" == "dedicado" ]]; then
+  if [[ ! -f "/etc/letsencrypt/live/${DEM_DOMAIN}/fullchain.pem" && -n "${CERTBOT_EMAIL:-}" ]]; then
+    "$DIR/server/bin/certbot-init.sh" || log "aviso: certificado TLS ainda não emitido (verifique o DNS)"
+  fi
+else
+  # Borda compartilhada: o certbot da outra aplicação emite e renova o certificado
+  "$DIR/server/bin/certificado-borda.sh" || log "aviso: certificado na borda ainda não emitido"
 fi
+
+# Logs somente dos containers do DEM para o CloudWatch (links estáveis por nome)
+mkdir -p /var/log/dem/containers
+for c in dem-nginx dem-php-fpm dem-mysql; do
+  caminho=$(docker inspect --format '{{.LogPath}}' "$c" 2>/dev/null || true)
+  [[ -n "$caminho" ]] && ln -sfn "$caminho" "/var/log/dem/containers/${c}.log"
+done
 
 # Mantém somente as 3 imagens mais recentes da aplicação
 docker images "$IMAGEM" --format '{{.Tag}}' | grep -v -e "^${TAG}$" -e "^${ANTERIOR:-__}$" | tail -n +2 |

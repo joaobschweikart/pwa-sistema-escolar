@@ -1,11 +1,18 @@
 # =============================================================================
-# DEM — PRODUÇÃO na instância Amazon Lightsail «dem-prod» (sa-east-1)
-# Três containers: nginx (TLS + estáticos), php-fpm «dem-app» (app + fila +
-# agendador via supervisord) e mysql (somente rede interna, sem porta publicada).
+# DEM — PRODUÇÃO (instância Amazon Lightsail compartilhada com a aplicação Mestra)
 #
-# Este arquivo é copiado da imagem dem-app para /opt/dem pelo deploy
-# (infra/server/bin/deploy.sh). As variáveis vêm de /opt/dem/.env, gerado a
-# partir do AWS Systems Manager Parameter Store (nenhum segredo no Git).
+# Três containers: nginx (arquivos estáticos + FastCGI), php-fpm «dem-app» (app +
+# fila + agendador via supervisord) e mysql (somente rede interna, sem porta).
+#
+# Modo COMPARTILHADO (padrão): as portas 80/443 da instância pertencem ao nginx
+# de borda da Mestra, que termina o TLS (Let's Encrypt) de diario.<domínio> e
+# encaminha para o container "dem-nginx" pela rede Docker externa "dem_borda".
+# Modo DEDICADO: some este arquivo com docker-compose.prod.dedicado.yml (o nginx
+# do DEM publica 80/443 e termina o TLS sozinho).
+#
+# Copiado da imagem dem-app para /opt/dem pelo deploy (infra/server/bin/deploy.sh).
+# Variáveis em /opt/dem/.env, gerado do AWS SSM Parameter Store (sem segredos no Git).
+# Memória: tetos de ~610 MB no total; uso real típico ~300 MB.
 # =============================================================================
 name: dem
 
@@ -13,16 +20,13 @@ x-logs: &logs
   driver: json-file
   options:
     max-size: "10m"
-    max-file: "5"
+    max-file: "3"
 
 services:
   nginx:
     image: nginx:stable-alpine
     container_name: dem-nginx
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
     environment:
       DEM_DOMAIN: ${DEM_DOMAIN:?defina DEM_DOMAIN}
     volumes:
@@ -30,9 +34,7 @@ services:
       - ./nginx/templates:/opt/dem-nginx/templates:ro
       - ./nginx/snippets:/etc/nginx/snippets:ro
       - ./nginx/10-dem-select-template.sh:/docker-entrypoint.d/10-dem-select-template.sh:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-      - /var/www/certbot:/var/www/certbot:ro
-    networks: [app]
+    networks: [app, borda]
     depends_on:
       php-fpm:
         condition: service_healthy
@@ -42,7 +44,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    mem_limit: 96m
+    mem_limit: 32m
     logging: *logs
 
   php-fpm:
@@ -61,7 +63,7 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-    mem_limit: 768m
+    mem_limit: 256m
     logging: *logs
 
   mysql:
@@ -83,8 +85,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-      start_period: 30s
-    mem_limit: 768m
+      start_period: 40s
+    mem_limit: 320m
     logging: *logs
 
 volumes:
@@ -96,3 +98,8 @@ networks:
   app:
   dados:
     internal: true
+  # Rede compartilhada com o nginx de borda (criada pelo deploy; nunca removida
+  # por "compose down" porque é externa)
+  borda:
+    external: true
+    name: dem_borda
