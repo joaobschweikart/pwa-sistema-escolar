@@ -7,7 +7,8 @@
         "dev": "vite",
         "icons": "pwa-assets-generator",
         "e2e": "playwright test",
-        "e2e:mobile": "playwright test --project=mobile-chrome"
+        "e2e:mobile": "playwright test --project=mobile-chrome",
+        "e2e:docker": "docker run --rm --network host --ipc=host -u \"$(id -u):$(id -g)\" -e HOME=/tmp -e CI -v \"$PWD\":/app -w /app mcr.microsoft.com/playwright:v1.65.1-noble npx playwright test"
     },
     "devDependencies": {
         "@playwright/test": "^1.65.1",

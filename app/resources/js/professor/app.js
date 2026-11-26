@@ -59,14 +59,16 @@ document.addEventListener('alpine:init', () => {
             });
             navigator.serviceWorker?.addEventListener('message', (e) => this.mensagemDoServiceWorker(e.data));
 
+            this.sincronizando = this.online; // evita exibir "Sincronizado" antes do primeiro download
             await this.prepararUsuario();
             await this.recarregarLocal();
             this.lerRota();
             this.carregando = false;
+            this.sincronizando = false;
 
             if (this.online) {
-                await this.garantirShellEmCache();
                 await this.sincronizarAgora();
+                await this.garantirShellEmCache();
             }
         },
 
@@ -206,6 +208,7 @@ document.addEventListener('alpine:init', () => {
             if (this.sincronizando) return { texto: 'Sincronizando…', classe: 'bg-sky-100 text-sky-800' };
             if (!this.online) return { texto: this.fila.length ? `Offline · ${this.fila.length} pendente(s)` : 'Offline', classe: 'bg-amber-100 text-amber-900' };
             if (this.fila.length) return { texto: `${this.fila.length} pendente(s)`, classe: 'bg-amber-100 text-amber-900' };
+            if (!this.ultimaSincronizacao) return { texto: 'Aguardando sincronização', classe: 'bg-slate-100 text-slate-700' };
             return { texto: 'Sincronizado', classe: 'bg-emerald-100 text-emerald-800' };
         },
 
