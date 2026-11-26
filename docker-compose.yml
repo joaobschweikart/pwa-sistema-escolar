@@ -1,0 +1,99 @@
+# =============================================================================
+# DEM — ambiente de DESENVOLVIMENTO local
+# Sobe tudo com um único comando:   docker compose up -d
+# App: http://localhost:8080   ·   MySQL: 127.0.0.1:3308 (somente local)
+# Na primeira subida: instala dependências, compila o front-end, migra e
+# carrega os dados de demonstração automaticamente.
+# =============================================================================
+name: dem
+
+x-db-env: &db-env
+  DB_CONNECTION: mysql
+  DB_HOST: mysql
+  DB_PORT: 3306
+  DB_DATABASE: dem_db
+  DB_USERNAME: dem
+  DB_PASSWORD: dem_dev_password
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: dem_db
+      MYSQL_USER: dem
+      MYSQL_PASSWORD: dem_dev_password
+      MYSQL_ROOT_PASSWORD: dem_dev_root
+    volumes:
+      - dem-mysql:/var/lib/mysql
+      - ./docker/mysql/my.cnf:/etc/mysql/conf.d/dem.cnf:ro
+    ports:
+      - "127.0.0.1:${DEM_DB_PORT:-3308}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -udem -pdem_dev_password --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  # Build único do front-end (Vite + Workbox). O service worker exige build,
+  # por isso o ambiente local usa os assets compilados, como em produção.
+  assets:
+    image: node:24-alpine
+    working_dir: /app
+    user: "${DEM_UID:-1000}:${DEM_GID:-1000}"
+    environment:
+      HOME: /tmp
+      npm_config_cache: /tmp/.npm
+    volumes:
+      - ./app:/app
+    command: sh -c "npm ci --no-audit --no-fund && npm run build"
+
+  php-fpm:
+    build:
+      context: .
+      target: dev
+    image: dem-app:dev
+    user: "${DEM_UID:-1000}:${DEM_GID:-1000}"
+    environment:
+      <<: *db-env
+      HOME: /tmp
+      COMPOSER_HOME: /tmp/composer
+      APP_URL: http://localhost:${DEM_HTTP_PORT:-8080}
+      QUEUE_CONNECTION: sync
+    volumes:
+      - ./app:/var/www/html
+    depends_on:
+      mysql:
+        condition: service_healthy
+      assets:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "SCRIPT_NAME=/ping SCRIPT_FILENAME=/ping REQUEST_METHOD=GET cgi-fcgi -bind -connect 127.0.0.1:9000 | grep -q pong"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+
+  nginx:
+    image: nginx:stable-alpine
+    environment:
+      DEM_DOMAIN: localhost
+    ports:
+      - "${DEM_HTTP_PORT:-8080}:80"
+    volumes:
+      - ./app/public:/var/www/html/public:ro
+      - ./docker/nginx/templates:/opt/dem-nginx/templates:ro
+      - ./docker/nginx/snippets:/etc/nginx/snippets:ro
+      - ./docker/nginx/10-dem-select-template.sh:/docker-entrypoint.d/10-dem-select-template.sh:ro
+    depends_on:
+      php-fpm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/api/health | grep -q '\"status\":\"ok\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  dem-mysql:

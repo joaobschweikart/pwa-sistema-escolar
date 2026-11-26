@@ -1,0 +1,33 @@
+# Modo HTTPS: produção com certificado Let's Encrypt emitido pelo certbot no host.
+server {
+    listen 80 default_server;
+    server_name ${DEM_DOMAIN};
+    server_tokens off;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl default_server;
+    http2 on;
+    server_name ${DEM_DOMAIN};
+    server_tokens off;
+
+    ssl_certificate     /etc/letsencrypt/live/${DEM_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DEM_DOMAIN}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    include /etc/nginx/snippets/dem-app.conf;
+}
