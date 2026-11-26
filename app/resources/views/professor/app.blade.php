@@ -147,7 +147,7 @@
                                     </ul>
                                 </div>
 
-                                <div class="sticky bottom-20 flex gap-2 md:bottom-4">
+                                <div class="sticky bottom-16 -mx-4 flex gap-2 border-t border-slate-200 bg-slate-50/95 px-4 py-3 backdrop-blur md:bottom-0 md:mx-0 md:rounded-xl md:border">
                                     <button type="button" @click="formAula = null" class="btn-secundario flex-1">Cancelar</button>
                                     <button type="submit" class="btn-primario flex-1" data-testid="botao-salvar-aula"><x-icone nome="check" /> Salvar</button>
                                 </div>
@@ -215,7 +215,7 @@
                                         </li>
                                     </template>
                                 </ul>
-                                <div class="sticky bottom-20 flex gap-2 md:bottom-4">
+                                <div class="sticky bottom-16 -mx-4 flex gap-2 border-t border-slate-200 bg-slate-50/95 px-4 py-3 backdrop-blur md:bottom-0 md:mx-0 md:rounded-xl md:border">
                                     <button type="button" @click="avaliacaoId = null" class="btn-secundario flex-1">Cancelar</button>
                                     <button type="submit" class="btn-primario flex-1" data-testid="botao-salvar-notas"><x-icone nome="check" /> Salvar notas</button>
                                 </div>

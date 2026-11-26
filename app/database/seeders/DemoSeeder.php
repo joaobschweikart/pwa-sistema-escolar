@@ -78,7 +78,7 @@ class DemoSeeder extends Seeder
         $criadas = [];
         foreach ($turmas as [$escola, $nome, $serie, $turno]) {
             $turma = Turma::query()->create(['escola_id' => $escola->id, 'nome' => $nome, 'serie' => $serie, 'turno' => $turno, 'ano_letivo' => $ano]);
-            $nomes = collect(range(1, 12))->map(fn () => $faker->unique()->name())->sort()->values();
+            $nomes = collect(range(1, 12))->map(fn () => $faker->unique()->firstName().' '.$faker->lastName().' '.$faker->lastName())->sort()->values();
             foreach ($nomes as $i => $nomeAluno) {
                 $aluno = Aluno::query()->create([
                     'escola_id' => $escola->id, 'nome' => $nomeAluno, 'codigo' => $faker->unique()->numerify('A#######'),
