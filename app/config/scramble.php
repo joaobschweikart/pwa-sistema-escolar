@@ -1,6 +1,7 @@
 <?php
 
 use Dedoc\Scramble\Http\Middleware\RestrictedDocsAccess;
+use Dedoc\Scramble\OpenApiVersion;
 
 return [
     /*
@@ -44,22 +45,34 @@ return [
     /*
      * OpenAPI version of the resulting document.
      */
-    'openapi_version' => \Dedoc\Scramble\OpenApiVersion::V3_1,
+    'openapi_version' => OpenApiVersion::V3_1,
 
     'info' => [
         /*
          * API version.
          */
-        'version' => env('API_VERSION', '0.0.1'),
+        'version' => env('API_VERSION', '1.0.0'),
 
         /*
          * Description rendered on the home page of the API documentation (`/docs/api`).
          */
-        'description' => '',
+        'description' => <<<'MD'
+API REST do **Diário Escolar Municipal (DEM)**.
+
+**Autenticação:** envie `POST /v1/auth/token` com e-mail, senha e nome do dispositivo e use o token
+retornado no cabeçalho `Authorization: Bearer <token>` (Laravel Sanctum).
+
+**Sincronização offline:** a PWA do professor guarda os lançamentos no IndexedDB e os envia em lote
+para `POST /v1/sync`. Cada operação tem UUID gerado no cliente (idempotência) e a versão do registro
+lida no cache (detecção de conflitos). Aula e frequência: *last-write-wins*. Nota: conflito vai para
+a fila do gestor (`GET /v1/conflitos`).
+
+**Limites:** 120 req/min por usuário, 30 lotes de sync/min e 5 tentativas de login/min.
+MD,
     ],
 
     'ui' => [
-        'title' => null,
+        'title' => 'DEM — Documentação da API',
     ],
 
     /*
