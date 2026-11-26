@@ -1,0 +1,21 @@
+# =============================================================================
+# DEM — override para INSTÂNCIA DEDICADA (opção original da modelagem):
+#   docker compose -f docker-compose.prod.yml -f docker-compose.prod.dedicado.yml up -d
+# O nginx do DEM publica 80/443 e termina o TLS com o certificado emitido pelo
+# certbot do host (infra/server/bin/certbot-init.sh). Selecionado pelo deploy
+# quando DEM_MODO=dedicado.
+# =============================================================================
+services:
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    mem_limit: 64m
+
+networks:
+  borda:
+    external: false
+    name: dem_borda
