@@ -36,9 +36,9 @@ usa GitHub Actions (`.github/workflows/`). Os nomes de recursos seguem a modelag
 | Segredos | AWS Systems Manager Parameter Store (`SecureString`, `/dem/prod/*`) |
 | Backup | `mysqldump` diário → Lightsail Object Storage `dem-backups` (retenção de 30 dias) |
 | E-mail | Amazon SES via SMTP (porta 587, STARTTLS), identidade `diario.obramestra.com.br` |
-| Monitoramento | Amazon CloudWatch (logs dos containers do DEM e métricas do agente), alarmes e AWS Budgets |
+| Monitoramento | Amazon CloudWatch (logs dos containers do DEM e métricas do agente, dentro do nível gratuito) e healthcheck; alarmes e Budgets disponíveis nos scripts, mas não ativados (custo adicional zero) |
 | Memória do DEM | tetos de 32 + 256 + 320 MB; uso real medido de ~290 MB |
-| Custo adicional do DEM | cerca de **US$ 2 a 4 por mês** (a instância já era paga); instância dedicada: ~US$ 15 a 17 (seção 10) |
+| Custo adicional do DEM | cerca de **US$ 1 por mês** (bucket de backups) + centavos de ECR; instância dedicada: ~US$ 15 a 17 (seção 10) |
 | Objetivos de recuperação | **RTO de 4 h** e **RPO de 24 h** |
 
 Escopo desta entrega: provisionamos **somente produção**. A homologação está documentada como réplica
@@ -52,7 +52,7 @@ projeto acadêmico e uma segunda instância dobraria o custo sem ganho para a av
 
 | Aspecto | Instância dedicada (modelagem) | Instância compartilhada (implantada) |
 |---|---|---|
-| Custo mensal | ~US$ 15 a 17 | ~US$ 2 a 4 adicionais |
+| Custo mensal | ~US$ 15 a 17 | ~US$ 1 adicional |
 | Região | `sa-east-1` (dados no Brasil) | `us-east-1` (região da instância existente) |
 | Isolamento | nó exclusivo | containers, redes, banco, volumes e limites de memória próprios; mesmo kernel e host |
 | TLS e portas | nginx do DEM em 80/443 | nginx de borda da outra aplicação termina o TLS e encaminha ao DEM |
@@ -171,7 +171,7 @@ A região é um parâmetro (`AWS_REGION` em `infra/config.env`), assim como a co
 
 | Recurso | Nome | Configuração |
 |---|---|---|
-| Amazon ECR | `dem-app` | tags **imutáveis**, *scan on push*, AES-256, ciclo de vida mantendo as 15 imagens mais recentes (o rollback é só uma troca de tag) |
+| Amazon ECR | `dem-app` | tags **imutáveis**, *scan on push*, AES-256, ciclo de vida mantendo as 5 imagens mais recentes (o rollback é só uma troca de tag) |
 | Lightsail Object Storage | `dem-backups` | plano de 5 GB, acesso **privado**, chave de acesso exclusiva do backup |
 | SSM Parameter Store | `/dem/prod/*` | 26 parâmetros `SecureString` (KMS), camada padrão gratuita |
 | IAM: role `dem-github-deploy` | — | assumida pelo GitHub Actions via **OIDC** (somente tags `v*` e environment `production`). Pode publicar só no repositório `dem-app` e enviar comandos SSM só a nós com a tag `Projeto=dem` |
@@ -181,7 +181,7 @@ A região é um parâmetro (`AWS_REGION` em `infra/config.env`), assim como a co
 | Certificado TLS | Let's Encrypt | emitido pelo `mestra_certbot` (desafio HTTP-01 por webroot) e renovado pelo laço `certbot renew` já existente |
 | DNS | Registro.br | registro A `diario` → IP estático da instância; CNAMEs de DKIM do SES |
 | CloudWatch | `/dem/prod/{containers,deploy,backup}` | retenção de 30/90/90 dias; métricas `DEM/Producao` (memória e disco) |
-| AWS Budgets | `dem-mensal` | limite de US$ 20/mês; alertas em 80% do gasto real e 100% do previsto |
+| AWS Budgets | `dem-mensal` | não criado nesta implantação, por decisão de não receber alertas (`01-orcamento.sh` cria limite de US$ 20/mês com alertas em 80% do real e 100% do previsto) |
 
 ### 4.4 Configuração da aplicação em produção
 
@@ -330,7 +330,7 @@ Disparada por tag `vX.Y.Z`:
 |---|---|---|---|---|
 | Banco `dem_db` | `infra/server/bin/backup.sh`: `mysqldump --single-transaction` → gzip → SHA-256 | diário, 03:15 (cron em `/etc/cron.d/dem`) | 30 dias no bucket, 7 dias no disco | bucket `dem-backups` |
 | Instância inteira | snapshot automático do Lightsail | opcional (na instância compartilhada depende do dono; no modo dedicado, ativado) | 7 snapshots | Lightsail |
-| Aplicação | imagens imutáveis no ECR | a cada tag | 15 versões | ECR |
+| Aplicação | imagens imutáveis no ECR | a cada tag | 5 versões | ECR |
 | Configuração | Parameter Store + código no Git | a cada alteração | histórico de versões | AWS / GitHub |
 | Lançamentos offline | fila no IndexedDB do professor | até sincronizar | até o envio | dispositivo |
 
@@ -342,7 +342,7 @@ Disparada por tag `vX.Y.Z`:
     tabelas principais com produção e apaga o banco temporário;
   - roda **todo mês** pelo cron;
   - foi validado nesta entrega: contagens restauradas iguais às de produção em cerca de 2 s;
-  - um alarme avisa se o backup diário não for concluído.
+  - o resultado fica no log `/dem/prod/backup` (o alarme "backup ausente" é opcional).
 
 **Procedimento de recuperação (meta: 4 h)**
 
@@ -368,8 +368,11 @@ Durante toda a recuperação **as aulas continuam sendo registradas offline**.
 | Custos | AWS Budgets `dem-mensal` | e-mail em 80% (real) e 100% (previsto) |
 | Erros funcionais | fila de conflitos e auditoria de notas no painel do gestor | indicador no painel |
 
-Os alarmes são criados por `02-provisionar.sh` quando `ALERTA_EMAIL` está definido, e cada inscrição
-precisa ser confirmada pelo e-mail recebido da AWS. Recomendação complementar sem custo: um monitor externo
+**Nesta implantação, os alarmes e o orçamento não foram ativados** (decisão de custo e de não receber
+alertas). A observabilidade fica com os logs e as métricas no CloudWatch, dentro do nível sempre gratuito,
+o healthcheck usado pelo deploy e o rollback automático. Para ativar os alertas, defina `ALERTA_EMAIL` e
+rode `02-provisionar.sh` e `01-orcamento.sh`; cada inscrição precisa ser confirmada pelo e-mail recebido
+da AWS. Recomendação complementar sem custo: um monitor externo
 de disponibilidade (por exemplo, UptimeRobot) apontado para `https://diario.obramestra.com.br/api/health`.
 Incidentes e retornos das escolas viram *issues* no GitHub, o que fecha o ciclo DevOps da modelagem.
 
@@ -379,14 +382,15 @@ Incidentes e retornos das escolas viram *issues* no GitHub, o que fecha o ciclo 
 |---|---|---|---|
 | Instância Lightsail 2 GB (IPv4) | 0,00 adicional | ~12,00 | na compartilhada, a instância já era paga pela outra aplicação |
 | IP estático | 0,00 | 0,00 | gratuito enquanto anexado |
-| Snapshots automáticos | 0,00 (não ativados para o DEM) | ~1,00 a 2,00 | US$ 0,05/GB-mês, incrementais |
-| Bucket `dem-backups` (5 GB) | 1,00 | 1,00 | dumps compactados ocupam poucos MB |
-| Amazon ECR | ~0,10 a 0,30 | ~0,10 a 0,30 | US$ 0,10/GB-mês; ciclo de vida limita a 15 imagens |
-| CloudWatch | ~0,60 a 1,00 | ~0,60 a 1,00 | 2 métricas personalizadas, alarmes e poucos GB de log |
-| SES | < 0,10 | < 0,10 | US$ 0,10 por mil e-mails (só recuperação de senha) |
+| Snapshots automáticos | 0,00 (não ativados) | ~1,00 a 2,00 | US$ 0,05/GB-mês, incrementais |
+| Bucket `dem-backups` (5 GB) | 1,00 | 1,00 | plano fixo do Lightsail; dumps compactados ocupam poucos MB |
+| Amazon ECR | ~0,05 a 0,20 | ~0,05 a 0,20 | US$ 0,10/GB-mês; ciclo de vida limita a 5 imagens |
+| CloudWatch | 0,00 | 0,00 a 1,00 | 2 métricas e poucos MB de log cabem no nível sempre gratuito (10 métricas, 5 GB de logs); alarmes só no modo com alertas |
+| SES | < 0,01 | < 0,10 | US$ 0,10 por mil e-mails (só recuperação de senha) |
 | SSM (Run Command, ativação padrão, Parameter Store padrão) | 0,00 | 0,00 | camada gratuita |
+| AWS Budgets | 0,00 (não criado) | 0,00 | os dois primeiros orçamentos são gratuitos |
 | Domínio | 0,00 (subdomínio de domínio existente) | ~0,70 | ex.: `.com.br` no Registro.br, cerca de R$ 40/ano |
-| **Total** | **~2 a 4** | **~15 a 17** | o orçamento `dem-mensal` alerta acima de US$ 20 |
+| **Total** | **~1,05 a 1,20** | **~15 a 17** | |
 
 **Plano gratuito:** contas AWS novas entram no *Free plan*, com créditos de boas-vindas válidos por até
 6 meses e utilizáveis em serviços elegíveis, como o Lightsail. Ao fim do período, ou quando os créditos
