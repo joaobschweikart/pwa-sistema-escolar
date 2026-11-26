@@ -45,7 +45,7 @@ repeat while (CI aprovada?) is (não) not (sim)
 :Aprovação manual da\nSecretaria de Educação;
 
 |#F6EEF8|Entrega contínua\n(Amazon ECR e AWS SSM)|
-:Implantar na instância «dem-prod»\nvia AWS Systems Manager;
+:Implantar na instância Lightsail\n(nó SSM do DEM) via AWS Systems Manager;
 
 |#EAF1F8|Produção e monitoramento\n(Lightsail e CloudWatch)|
 :""docker compose pull && up -d""\ne migrações (""migrate --force"");

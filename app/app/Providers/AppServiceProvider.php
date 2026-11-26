@@ -58,8 +58,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(User::class, UserPolicy::class);
         Gate::policy(ConflitoNota::class, ConflitoNotaPolicy::class);
 
-        // Documentação da API: liberada em dev; em produção somente para admin/gestor autenticados
-        Gate::define('viewApiDocs', fn (?User $user) => ! $this->app->isProduction() || ($user !== null && ! $user->ehProfessor()));
+        // Documentação da API (OpenAPI) pública: descreve os endpoints, não expõe dados
+        Gate::define('viewApiDocs', fn (?User $user) => true);
     }
 
     private function configurarRateLimits(): void
