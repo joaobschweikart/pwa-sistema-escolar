@@ -6,5 +6,11 @@ use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
 {
-    //
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Os testes de PHP não dependem do build do front-end (manifest do Vite)
+        $this->withoutVite();
+    }
 }
