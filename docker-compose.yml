@@ -38,7 +38,7 @@ services:
   # Build único do front-end (Vite + Workbox). O service worker exige build,
   # por isso o ambiente local usa os assets compilados, como em produção.
   assets:
-    image: node:24-alpine
+    image: node:24-slim
     working_dir: /app
     user: "${DEM_UID:-1000}:${DEM_GID:-1000}"
     environment:

@@ -55,7 +55,7 @@ RUN composer dump-autoload --no-dev --optimize --classmap-authoritative --no-scr
 # -----------------------------------------------------------------------------
 # assets: build do front-end (Tailwind + Alpine + service worker Workbox)
 # -----------------------------------------------------------------------------
-FROM node:${NODE_VERSION}-alpine AS assets
+FROM node:${NODE_VERSION}-slim AS assets
 
 WORKDIR /app
 COPY app/package.json app/package-lock.json ./

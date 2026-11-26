@@ -1,0 +1,120 @@
+# Entrega contínua: tag vX.Y.Z -> imagem no Amazon ECR -> aprovação manual ->
+# deploy na instância Lightsail via AWS SSM -> healthcheck -> rollback automático.
+# Autenticação na AWS por OIDC (sem chaves estáticas no GitHub).
+name: CD
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+concurrency:
+  group: cd-producao
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
+  ECR_REPOSITORY: dem-app
+
+jobs:
+  imagem:
+    name: Publicar imagem no ECR
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: tag
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: dem-cd-imagem
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: prod
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag.outputs.tag }}
+          build-args: APP_VERSION=${{ steps.tag.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  producao:
+    name: Deploy em produção (dem-prod)
+    needs: imagem
+    runs-on: ubuntu-latest
+    # Environment com "required reviewers": aprovação manual da Secretaria de Educação
+    environment:
+      name: production
+      url: https://${{ vars.DEM_DOMAIN }}
+    env:
+      TAG: ${{ needs.imagem.outputs.tag }}
+      INSTANCIA: ${{ vars.SSM_INSTANCE_ID }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: dem-cd-deploy
+
+      - name: Deploy via SSM (docker compose pull && up -d + migrate --force)
+        id: deploy
+        run: |
+          cat > comando.sh <<SCRIPT
+          set -euo pipefail
+          export HOME=/root AWS_REGION=${AWS_REGION} ECR_REGISTRY=${ECR_REGISTRY} DEM_DOMAIN=${{ vars.DEM_DOMAIN }} SSM_PARAM_PATH=/dem/prod CERTBOT_EMAIL=${{ vars.CERTBOT_EMAIL }}
+          aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+          docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY}:${TAG}
+          # arquivos de implantação versionados dentro da própria imagem
+          cid=\$(docker create ${ECR_REGISTRY}/${ECR_REPOSITORY}:${TAG})
+          mkdir -p /opt/dem && docker cp \$cid:/opt/dem-deploy/. /opt/dem/ && docker rm \$cid >/dev/null
+          chmod +x /opt/dem/server/bin/*.sh
+          /opt/dem/server/bin/deploy.sh ${TAG}
+          SCRIPT
+          jq -Rs '{commands: (split("\n") | map(select(length > 0)))}' comando.sh > parametros.json
+          CMD=$(aws ssm send-command --instance-ids "$INSTANCIA" --document-name AWS-RunShellScript \
+            --comment "DEM deploy ${TAG}" --timeout-seconds 900 --parameters file://parametros.json \
+            --query Command.CommandId --output text)
+          echo "command_id=$CMD" >> "$GITHUB_OUTPUT"
+          for _ in $(seq 1 120); do
+            STATUS=$(aws ssm get-command-invocation --command-id "$CMD" --instance-id "$INSTANCIA" --query Status --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in Pending|InProgress|Delayed) sleep 10 ;; *) break ;; esac
+          done
+          aws ssm get-command-invocation --command-id "$CMD" --instance-id "$INSTANCIA" \
+            --query '[StandardOutputContent, StandardErrorContent]' --output text
+          echo "Status do deploy: $STATUS"
+          test "$STATUS" = "Success"
+
+      - name: Healthcheck externo (HTTPS)
+        id: saude
+        run: |
+          for _ in $(seq 1 18); do
+            if curl -fsS --max-time 10 "https://${{ vars.DEM_DOMAIN }}/api/health" | tee saude.json | grep -q "\"versao\":\"${TAG}\""; then
+              cat saude.json; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::healthcheck externo falhou para ${TAG}"
+          exit 1
+
+      - name: Rollback automático para a tag anterior
+        if: failure() && steps.deploy.outcome == 'success'
+        run: |
+          printf '%s\n' '{"commands":["export HOME=/root","/opt/dem/server/bin/deploy.sh --rollback"]}' > rollback.json
+          CMD=$(aws ssm send-command --instance-ids "$INSTANCIA" --document-name AWS-RunShellScript \
+            --comment "DEM rollback de ${TAG}" --parameters file://rollback.json --query Command.CommandId --output text)
+          sleep 60
+          aws ssm get-command-invocation --command-id "$CMD" --instance-id "$INSTANCIA" --query '[Status, StandardOutputContent]' --output text

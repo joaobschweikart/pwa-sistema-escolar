@@ -1,0 +1,98 @@
+# =============================================================================
+# DEM — PRODUÇÃO na instância Amazon Lightsail «dem-prod» (sa-east-1)
+# Três containers: nginx (TLS + estáticos), php-fpm «dem-app» (app + fila +
+# agendador via supervisord) e mysql (somente rede interna, sem porta publicada).
+#
+# Este arquivo é copiado da imagem dem-app para /opt/dem pelo deploy
+# (infra/server/bin/deploy.sh). As variáveis vêm de /opt/dem/.env, gerado a
+# partir do AWS Systems Manager Parameter Store (nenhum segredo no Git).
+# =============================================================================
+name: dem
+
+x-logs: &logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  nginx:
+    image: nginx:stable-alpine
+    container_name: dem-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DEM_DOMAIN: ${DEM_DOMAIN:?defina DEM_DOMAIN}
+    volumes:
+      - dem-public:/var/www/html/public:ro
+      - ./nginx/templates:/opt/dem-nginx/templates:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
+      - ./nginx/10-dem-select-template.sh:/docker-entrypoint.d/10-dem-select-template.sh:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    networks: [app]
+    depends_on:
+      php-fpm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/api/health | grep -q '\"status\":\"ok\"'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 96m
+    logging: *logs
+
+  php-fpm:
+    image: ${DEM_IMAGE:?defina DEM_IMAGE}:${DEM_TAG:?defina DEM_TAG}
+    container_name: dem-php-fpm
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      APP_VERSION: ${DEM_TAG}
+      DB_HOST: mysql
+    volumes:
+      - dem-public:/var/www/public-shared
+      - dem-storage:/var/www/html/storage/app
+    # "app" permite saída para a internet (Amazon SES); "dados" alcança o MySQL
+    networks: [app, dados]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    mem_limit: 768m
+    logging: *logs
+
+  mysql:
+    image: mysql:8.4
+    container_name: dem-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-dem_db}
+      MYSQL_USER: ${DB_USERNAME:-dem}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?defina DB_ROOT_PASSWORD}
+    volumes:
+      - dem-mysql:/var/lib/mysql
+      - ./mysql/my.cnf:/etc/mysql/conf.d/dem.cnf:ro
+    # Sem "ports": o banco não é exposto; rede interna sem saída para a internet
+    networks: [dados]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u\"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    mem_limit: 768m
+    logging: *logs
+
+volumes:
+  dem-mysql:
+  dem-public:
+  dem-storage:
+
+networks:
+  app:
+  dados:
+    internal: true
