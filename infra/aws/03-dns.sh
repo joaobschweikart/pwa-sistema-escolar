@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# DNS no Lightsail (zona gratuita): cria a zona, o registro A da aplicação e,
-# se já existirem, os CNAMEs de DKIM do SES. A API de DNS do Lightsail fica
+# DNS no Lightsail (zona gratuita): cria a zona e o registro A da aplicação.
+# A API de DNS do Lightsail fica
 # em us-east-1, independentemente da região da instância.
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -16,14 +16,6 @@ existe "${DNS[@]}" get-domain --domain-name "$DEM_ZONA_DNS" || "${DNS[@]}" creat
 "${DNS[@]}" create-domain-entry --domain-name "$DEM_ZONA_DNS" \
   --domain-entry "name=${DEM_DOMAIN},type=A,target=${DEM_IP}" >/dev/null 2>&1 || aviso "registro A já existia"
 ok "registro A ${DEM_DOMAIN} -> ${DEM_IP}"
-
-if [[ -f "$SAIDA/ses-dkim.txt" ]]; then
-  while read -r token; do
-    "${DNS[@]}" create-domain-entry --domain-name "$DEM_ZONA_DNS" \
-      --domain-entry "name=${token}._domainkey.${DEM_DOMAIN},type=CNAME,target=${token}.dkim.amazonses.com" >/dev/null 2>&1 || true
-  done < "$SAIDA/ses-dkim.txt"
-  ok "CNAMEs de DKIM do SES criados"
-fi
 
 info "Configure no registrador (ex.: Registro.br) os servidores DNS da zona:"
 "${DNS[@]}" get-domain --domain-name "$DEM_ZONA_DNS" \

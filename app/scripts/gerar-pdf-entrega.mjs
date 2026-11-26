@@ -47,7 +47,7 @@ const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
   <dl>
     <dt>Integrante</dt><dd>João Vitor Bernardon Schweikart</dd>
     <dt>Link do Git da Prática Extensionista IV</dt><dd><a href="https://github.com/joaobschweikart/pwa-sistema-escolar">https://github.com/joaobschweikart/pwa-sistema-escolar</a></dd>
-    <dt>Infraestrutura escolhida</dt><dd>Cloud pública — Amazon Web Services, região sa-east-1 (São Paulo): Amazon Lightsail + Docker Compose, Amazon ECR, AWS Systems Manager, Amazon CloudWatch, Amazon SES e Lightsail Object Storage</dd>
+    <dt>Infraestrutura escolhida</dt><dd>Cloud pública — Amazon Web Services, região us-east-1 (Virgínia do Norte): instância Amazon Lightsail compartilhada + Docker Compose, Amazon ECR, AWS Systems Manager, Amazon CloudWatch e Lightsail Object Storage</dd>
   </dl>
   <p class="sub">Chapecó — SC, ${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</p>
 </section>

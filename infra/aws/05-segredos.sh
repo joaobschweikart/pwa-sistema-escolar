@@ -8,9 +8,6 @@ source "$(dirname "$0")/lib.sh"
 conferir_conta
 FORCAR=${1:-}
 [[ -f "$SAIDA/bucket-chave.json" ]] || erro "infra/out/bucket-chave.json não encontrado (rode 02-provisionar.sh)"
-[[ -f "$SAIDA/ses-smtp.env" ]] || erro "infra/out/ses-smtp.env não encontrado (rode 04-ses.sh)"
-# shellcheck source=/dev/null
-source "$SAIDA/ses-smtp.env"
 confirmar "Gravar os parâmetros em ${DEM_SSM_PARAM_PATH}/* ?"
 
 aleatorio() { openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c "$1"; }
@@ -37,14 +34,8 @@ gravar SESSION_DRIVER database
 gravar SESSION_LIFETIME 480
 gravar CACHE_STORE database
 gravar QUEUE_CONNECTION database
-gravar MAIL_MAILER smtp
-gravar MAIL_SCHEME smtp
-gravar MAIL_HOST "$MAIL_HOST"
-gravar MAIL_PORT 587
-gravar MAIL_USERNAME "$MAIL_USERNAME"
-gravar MAIL_PASSWORD "$MAIL_PASSWORD"
-gravar MAIL_FROM_ADDRESS "$MAIL_FROM_ADDRESS"
-gravar MAIL_FROM_NAME "Diário Escolar Municipal"
+# A aplicação não envia e-mail (a senha é redefinida pelo gestor): driver "log"
+gravar MAIL_MAILER log
 gravar BACKUP_BUCKET "$DEM_BUCKET"
 gravar BACKUP_ACCESS_KEY_ID "$(jq -r .accessKeyId "$SAIDA/bucket-chave.json")"
 gravar BACKUP_SECRET_ACCESS_KEY "$(jq -r .secretAccessKey "$SAIDA/bucket-chave.json")"
