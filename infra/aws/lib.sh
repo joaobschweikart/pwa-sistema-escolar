@@ -36,11 +36,16 @@ conferir_conta() {
 
 existe() { "$@" >/dev/null 2>&1; }
 
+# Formato imutável do "sub" do OIDC do GitHub: dono@id/repo@id (consultado na API pública)
+GITHUB_SUB_IMUTAVEL=$(curl -fsS "https://api.github.com/repos/${GITHUB_REPO}" 2>/dev/null |
+  jq -r '"\(.owner.login)@\(.owner.id)/\(.name)@\(.id)"' 2>/dev/null || true)
+[[ -n "$GITHUB_SUB_IMUTAVEL" && "$GITHUB_SUB_IMUTAVEL" != *null* ]] || GITHUB_SUB_IMUTAVEL="${GITHUB_REPO}"
+
 # Substitui __VARIAVEL__ pelos valores do ambiente
 renderizar() {
   local conteudo
   conteudo=$(cat "$1")
-  for v in AWS_ACCOUNT_ID AWS_REGION GITHUB_REPO DEM_ECR_REPO DEM_SSM_PARAM_PATH; do
+  for v in AWS_ACCOUNT_ID AWS_REGION GITHUB_REPO GITHUB_SUB_IMUTAVEL DEM_ECR_REPO DEM_SSM_PARAM_PATH; do
     conteudo=${conteudo//__${v}__/${!v}}
   done
   printf '%s' "$conteudo"

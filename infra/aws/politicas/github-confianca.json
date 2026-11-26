@@ -11,7 +11,9 @@
         "StringLike": {
           "token.actions.githubusercontent.com:sub": [
             "repo:__GITHUB_REPO__:ref:refs/tags/v*",
-            "repo:__GITHUB_REPO__:environment:production"
+            "repo:__GITHUB_REPO__:environment:production",
+            "repo:__GITHUB_SUB_IMUTAVEL__:ref:refs/tags/v*",
+            "repo:__GITHUB_SUB_IMUTAVEL__:environment:production"
           ]
         }
       }

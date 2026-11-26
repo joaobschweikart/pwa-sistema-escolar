@@ -1,9 +1,6 @@
 <?php
 
-use App\Infrastructure\Notifications\RedefinirSenhaNotification;
 use App\Infrastructure\Persistence\Models\User;
-use Illuminate\Support\Facades\Notification;
-use Illuminate\Support\Facades\Password;
 use Tests\Support\Cenario;
 
 it('faz login e redireciona conforme o papel', function () {
@@ -34,23 +31,9 @@ it('emite token da PWA só para professor e revoga no logout', function () {
     $this->actingAs($c->gestor)->postJson('/pwa/token')->assertForbidden();
 });
 
-it('envia o link de recuperação de senha e redefine a senha', function () {
-    Notification::fake();
-    $u = User::factory()->create();
-
-    $this->post('/esqueci-senha', ['email' => $u->email])->assertSessionHas('status');
-    Notification::assertSentTo($u, RedefinirSenhaNotification::class);
-
-    $token = Password::createToken($u);
-    $this->post('/redefinir-senha', ['token' => $token, 'email' => $u->email, 'password' => 'novaSenha123', 'password_confirmation' => 'novaSenha123'])
-        ->assertRedirect('/login');
-    $this->post('/login', ['email' => $u->email, 'password' => 'novaSenha123'])->assertRedirect('/painel');
-});
-
-it('resposta da recuperação de senha não revela se o e-mail existe', function () {
-    Notification::fake();
-    $this->post('/esqueci-senha', ['email' => 'ninguem@exemplo.com'])->assertSessionHas('status');
-    Notification::assertNothingSent();
+it('não oferece recuperação de senha por e-mail (redefinição é feita pelo gestor)', function () {
+    $this->get('/login')->assertOk()->assertDontSee('esqueci-senha')->assertSee('gestor da sua escola');
+    $this->get('/esqueci-senha')->assertNotFound();
 });
 
 it('renderiza as telas de gestão para o admin', function (string $url) {

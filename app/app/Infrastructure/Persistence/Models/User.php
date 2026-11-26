@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Infrastructure\Persistence\Models;
 
 use App\Domain\Shared\Papel;
-use App\Infrastructure\Notifications\RedefinirSenhaNotification;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\UseFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -80,10 +79,5 @@ class User extends Authenticatable
     public function scopeVisiveisPara(Builder $query, User $usuario): Builder
     {
         return $usuario->ehAdmin() ? $query : $query->where('escola_id', $usuario->escola_id);
-    }
-
-    public function sendPasswordResetNotification(#[\SensitiveParameter] $token): void
-    {
-        $this->notify(new RedefinirSenhaNotification($token));
     }
 }

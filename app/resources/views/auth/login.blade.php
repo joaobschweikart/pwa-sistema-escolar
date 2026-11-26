@@ -11,5 +11,5 @@
         </label>
         <button type="submit" class="btn-primario w-full">Entrar</button>
     </form>
-    <a href="{{ route('password.request') }}" class="mt-4 flex min-h-11 items-center justify-center text-sm font-medium text-marca-700 hover:underline">Esqueci minha senha</a>
+    <p class="mt-4 text-center text-sm text-slate-600">Esqueceu a senha? Peça ao gestor da sua escola para redefini-la.</p>
 </x-layouts.guest>

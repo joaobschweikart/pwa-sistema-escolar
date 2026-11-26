@@ -84,7 +84,10 @@ jobs:
           chmod +x /opt/dem/server/bin/*.sh
           /opt/dem/server/bin/deploy.sh ${TAG}
           SCRIPT
-          jq -Rs '{commands: (split("\n") | map(select(length > 0)))}' comando.sh > parametros.json
+          # O AWS-RunShellScript executa com "sh" (dash, sem pipefail): o script vai
+          # em base64 e roda com bash, sem depender do interpretador do agente
+          B64=$(base64 -w0 comando.sh)
+          jq -n --arg b "$B64" '{commands: ["echo \($b) | base64 -d > /root/dem-cd-comando.sh", "bash /root/dem-cd-comando.sh"]}' > parametros.json
           CMD=$(aws ssm send-command --instance-ids "$INSTANCIA" --document-name AWS-RunShellScript \
             --comment "DEM deploy ${TAG}" --timeout-seconds 900 --parameters file://parametros.json \
             --query Command.CommandId --output text)

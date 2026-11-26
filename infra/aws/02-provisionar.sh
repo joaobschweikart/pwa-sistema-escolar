@@ -209,7 +209,7 @@ cat <<FIM
 Provisionamento concluído. Próximos passos:
   1) Aponte o DNS: registro A  ${DEM_DOMAIN} -> ${IP}   (ver 03-dns.sh)
   2) Em ~5 min confira o registro do SSM: ./06-ssm.sh status
-  3) Rode ./04-ses.sh e ./05-segredos.sh
+  3) Rode ./05-segredos.sh
   4) GitHub → variables: AWS_ROLE_ARN, AWS_REGION, ECR_REGISTRY, SSM_INSTANCE_ID, DEM_DOMAIN, CERTBOT_EMAIL
      (valores em infra/out/resultado.env)
 FIM

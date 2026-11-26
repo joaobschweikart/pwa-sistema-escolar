@@ -12,7 +12,7 @@ Uso:
 
 1. `cp config.env.example config.env` e preencha (o arquivo é ignorado pelo Git).
 2. Rode os scripts de `aws/` na ordem numérica. Cada um mostra o que vai criar e pede confirmação.
-3. Os arquivos gerados em `out/` (chave do bucket, credencial SMTP, IP) contêm segredos e também são
+3. Os arquivos gerados em `out/` (chave do bucket, IP) contêm segredos e também são
    ignorados pelo Git.
 
 Os arquivos de `server/` entram na imagem `dem-app` e são extraídos para `/opt/dem` em cada deploy.
