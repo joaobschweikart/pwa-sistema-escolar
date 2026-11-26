@@ -1,9 +1,50 @@
 @import 'tailwindcss';
 
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../storage/framework/views/*.php';
+@source '../views/**/*.blade.php';
+@source '../js/**/*.js';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --color-marca-50: #f0fdfa;
+    --color-marca-100: #ccfbf1;
+    --color-marca-600: #0d9488;
+    --color-marca-700: #0f766e;
+    --color-marca-800: #115e59;
+    --color-marca-900: #134e4a;
 }
+
+[x-cloak] { display: none !important; }
+
+/* Mobile-first: todos os alvos de toque têm no mínimo 44 × 44 px (min-h-11) */
+@utility btn {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition
+        focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marca-700 disabled:cursor-not-allowed disabled:opacity-50;
+}
+@utility btn-primario { @apply btn bg-marca-700 text-white hover:bg-marca-800; }
+@utility btn-secundario { @apply btn border border-slate-300 bg-white text-slate-800 hover:bg-slate-50; }
+@utility btn-perigo { @apply btn bg-red-600 text-white hover:bg-red-700; }
+@utility btn-fantasma { @apply btn text-slate-700 hover:bg-slate-100; }
+
+@utility campo-rotulo { @apply mb-1 block text-sm font-medium text-slate-700; }
+@utility campo {
+    @apply block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 shadow-sm
+        focus:border-marca-600 focus:ring-2 focus:ring-marca-600/30 focus:outline-none sm:text-sm;
+}
+@utility campo-erro { @apply mt-1 text-sm text-red-700; }
+
+@utility cartao { @apply rounded-xl border border-slate-200 bg-white shadow-sm; }
+@utility selo { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold; }
+
+@utility link-nav { @apply flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium text-slate-700 hover:bg-slate-100; }
+@utility link-nav-ativo { @apply bg-marca-50 text-marca-800; }
+
+@layer components {
+    .tabela { @apply w-full text-left text-sm; }
+    .tabela thead th { @apply bg-slate-50 px-4 py-3 text-xs font-semibold tracking-wide text-slate-600 uppercase; }
+    .tabela tbody td { @apply border-t border-slate-100 px-4 py-3 align-middle; }
+}
+
+/* Espaço para a barra de navegação inferior no celular (inclui área segura do iPhone) */
+.com-nav-inferior { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
+@media (min-width: 768px) { .com-nav-inferior { padding-bottom: 0; } }
+.nav-inferior { padding-bottom: env(safe-area-inset-bottom); }
