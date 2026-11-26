@@ -144,6 +144,25 @@ aws lightsail put-alarm --alarm-name dem-prod-status --monitored-resource-name "
   --evaluation-periods 2 --datapoints-to-alarm 2 --contact-protocols Email --notification-triggers ALARM >/dev/null
 ok "alarmes Lightsail: CPU ≥ 80% e falha de status check"
 
+# Alarmes do CloudWatch sobre as métricas do agente (disco e memória) via SNS
+TOPICO=$(aws sns create-topic --name dem-alertas --tags Key=Projeto,Value=dem --query TopicArn --output text)
+aws sns subscribe --topic-arn "$TOPICO" --protocol email --notification-endpoint "$ALERTA_EMAIL" >/dev/null
+aws cloudwatch put-metric-alarm --alarm-name dem-prod-disco --namespace DEM/Producao --metric-name disk_used_percent \
+  --dimensions Name=InstanceId,Value=dem-prod Name=path,Value=/ Name=fstype,Value=ext4 \
+  --statistic Maximum --period 300 --evaluation-periods 2 --threshold 80 --comparison-operator GreaterThanOrEqualToThreshold \
+  --treat-missing-data breaching --alarm-actions "$TOPICO"
+aws cloudwatch put-metric-alarm --alarm-name dem-prod-memoria --namespace DEM/Producao --metric-name mem_used_percent \
+  --dimensions Name=InstanceId,Value=dem-prod --statistic Average --period 300 --evaluation-periods 3 --threshold 90 \
+  --comparison-operator GreaterThanOrEqualToThreshold --alarm-actions "$TOPICO"
+aws logs put-metric-filter --log-group-name /dem/prod/backup --filter-name dem-backup-concluido \
+  --filter-pattern '"backup concluído"' \
+  --metric-transformations metricName=BackupConcluido,metricNamespace=DEM/Producao,metricValue=1,defaultValue=0 2>/dev/null \
+  || aviso "grupo /dem/prod/backup ainda não existe: rode este script de novo após o primeiro deploy"
+aws cloudwatch put-metric-alarm --alarm-name dem-prod-backup-ausente --namespace DEM/Producao --metric-name BackupConcluido \
+  --statistic Sum --period 86400 --evaluation-periods 1 --threshold 1 --comparison-operator LessThanThreshold \
+  --treat-missing-data breaching --alarm-actions "$TOPICO"
+ok "alarmes CloudWatch: disco ≥ 80%, memória ≥ 90% e backup diário ausente (confirme a inscrição do e-mail no SNS)"
+
 cat > "$SAIDA/resultado.env" <<RES
 DEM_IP=${IP}
 ECR_REGISTRY=${ECR_REGISTRY}

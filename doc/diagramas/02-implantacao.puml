@@ -35,7 +35,7 @@ frame "Amazon Web Services — região sa-east-1 (São Paulo)" <<cloud>> as aws 
   node "Instância Amazon Lightsail «dem-prod»\n<size:13>Linux, 2 vCPU e 2 GB de RAM, com agentes SSM e CloudWatch</size>" <<device>> as vps {
     node "Docker Compose" <<execution environment>> as docker {
       node "nginx\n<size:13>TLS e arquivos estáticos</size>" <<container>> as c_web
-      node "php-fpm — «dem-app»\n<size:13>aplicação Laravel e worker da fila</size>" <<container>> as c_app
+      node "php-fpm — «dem-app»\n<size:13>aplicação Laravel, worker da fila e agendador (supervisord)</size>" <<container>> as c_app
       node "mysql 8" <<container>> as c_db {
         database "dem_db" as db
       }
@@ -47,11 +47,13 @@ frame "Amazon Web Services — região sa-east-1 (São Paulo)" <<cloud>> as aws 
   node "Amazon CloudWatch\n<size:13>logs e alarmes</size>" <<service>> as cw
   node "Lightsail Object Storage\n<size:13>bucket «dem-backups»</size>" <<service>> as bucket
   node "Amazon SES\n<size:13>e-mail transacional</size>" <<service>> as ses
+  node "SSM Parameter Store\n<size:13>segredos da aplicação</size>" <<service>> as params
 
   ecr -[hidden]down- ssm
   ssm -[hidden]down- cw
   cw -[hidden]down- bucket
   bucket -[hidden]down- ses
+  ses -[hidden]down- params
 }
 
 dispositivo -- internet : <<HTTPS>>\n<size:11>TLS, porta 443</size>
@@ -59,15 +61,17 @@ internet -- c_web : <<HTTPS>>\n<size:11>porta 443</size>
 c_web -- c_app : <<FastCGI>>\n<size:11>porta 9000</size>
 c_app -- c_db : <<MySQL>>\n<size:11>3306, rede interna</size>
 c_app -- ses : <<SMTP+TLS>>\n<size:11>porta 587</size>
-c_app -- bucket : <<HTTPS>>\n<size:11>backup diário</size>
+vps -- bucket : <<HTTPS>>\n<size:11>backup diário (cron do host)</size>
 vps -- cw : <<HTTPS>>\n<size:11>envio de logs</size>
 vps -- ssm : <<HTTPS>>\n<size:11>saída, sem SSH aberto</size>
+vps -- params : <<HTTPS>>\n<size:11>.env gerado no deploy</size>
 docker -- ecr : <<HTTPS>>\n<size:11>docker pull</size>
 
 legend bottom
   <b>Legenda</b> — caixa tridimensional = nó de execução; cilindro = armazenamento; retângulo com aba = artefato implantado; linha contínua = caminho de comunicação, com protocolo e porta.
   «device» equipamento   «execution environment» ambiente de execução   «container» container Docker   «service» serviço gerenciado da nuvem
-  O ambiente de homologação é uma réplica reduzida desta topologia e foi omitido para não duplicar elementos.
+  O ambiente de homologação é uma réplica reduzida desta topologia e foi omitido para não duplicar elementos (não provisionado na Entrega 2).
+  Firewall do Lightsail: somente 80/443; o MySQL fica em rede Docker interna, sem porta publicada; agente SSM registrado por ativação híbrida.
 endlegend
 
 @enduml
